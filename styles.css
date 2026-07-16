@@ -1003,7 +1003,7 @@ button {
 
 .install-hint-card {
   position: fixed;
-  top: calc(var(--safe-top) + 14px);
+  top: calc(var(--safe-top) + 78px);
   left: 16px;
   right: 16px;
   z-index: 45;
@@ -1017,6 +1017,7 @@ button {
   box-shadow: 0 20px 40px rgba(23, 23, 23, 0.12);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
+  pointer-events: none;
 }
 
 .install-hint-title {
@@ -1082,6 +1083,7 @@ button {
   color: var(--accent);
   font-size: 14px;
   font-weight: 700;
+  pointer-events: auto;
 }
 
 .menu-sheet,
