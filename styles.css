@@ -381,6 +381,7 @@ button {
   border-radius: 24px;
   box-shadow: 0 14px 28px rgba(23, 23, 23, 0.05);
   font-size: 15px;
+  color: var(--ink);
 }
 
 .bubble-text {
@@ -538,16 +539,19 @@ button {
   max-width: min(94%, 420px);
   background: linear-gradient(135deg, var(--bubble-user-top), var(--bubble-user-bottom));
   border-bottom-right-radius: 10px;
+  color: var(--ink);
 }
 
 .bubble.assistant {
   background: var(--bubble-ai);
   border-bottom-left-radius: 10px;
+  color: var(--ink);
 }
 
 .bubble.system {
   background: var(--bubble-system);
   border-bottom-left-radius: 10px;
+  color: var(--ink);
 }
 
 .bubble-actions {
@@ -659,8 +663,15 @@ button {
   max-height: 124px;
   outline: none;
   color: var(--ink);
+  -webkit-text-fill-color: var(--ink);
+  caret-color: var(--accent);
   font-size: 16px;
   line-height: 1.45;
+}
+
+.composer textarea::placeholder {
+  color: var(--ink-soft);
+  opacity: 1;
 }
 
 .send-btn {
@@ -832,6 +843,16 @@ button {
   margin-top: 12px;
   color: var(--ink-soft);
   line-height: 1.55;
+}
+
+.session-preview a,
+.session-preview p,
+.session-preview li,
+.session-preview code,
+.session-preview strong,
+.session-preview em,
+.session-preview span {
+  color: inherit;
 }
 
 .session-preview-markdown {
