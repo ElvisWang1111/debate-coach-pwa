@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "debate-coach-pwa-";
-const CACHE_NAME = "debate-coach-pwa-v42";
+const CACHE_NAME = "debate-coach-pwa-v43";
 const ASSETS = [
   "./",
   "./index.html",
@@ -14,6 +14,62 @@ const ASSETS = [
   "./assets/icons/icon-512.png",
   "./assets/icons/icon-1024.png",
 ];
+
+function shouldHandle(request) {
+  if (request.method !== "GET") {
+    return false;
+  }
+
+  const requestURL = new URL(request.url);
+  return requestURL.origin === self.location.origin;
+}
+
+function isAppShellRequest(request) {
+  const requestURL = new URL(request.url);
+  return (
+    request.mode === "navigate" ||
+    request.destination === "document" ||
+    request.destination === "script" ||
+    request.destination === "style" ||
+    requestURL.pathname.endsWith(".webmanifest") ||
+    requestURL.pathname.endsWith(".md")
+  );
+}
+
+async function networkFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch (error) {
+    const cached = await caches.match(request);
+    if (cached) {
+      return cached;
+    }
+    if (request.mode === "navigate") {
+      return caches.match("./index.html");
+    }
+    throw error;
+  }
+}
+
+async function cacheFirst(request) {
+  const cached = await caches.match(request);
+  if (cached) {
+    return cached;
+  }
+
+  const response = await fetch(request);
+  if (response.ok) {
+    const cache = await caches.open(CACHE_NAME);
+    cache.put(request, response.clone());
+  }
+  return response;
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -30,30 +86,11 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") {
-    return;
-  }
-
-  const requestURL = new URL(event.request.url);
-  if (requestURL.origin !== self.location.origin) {
+  if (!shouldHandle(event.request)) {
     return;
   }
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) {
-        return cached;
-      }
-      return fetch(event.request)
-        .then((response) => {
-          if (!response.ok) {
-            return response;
-          }
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          return response;
-        })
-        .catch(() => caches.match("./index.html"));
-    })
+    isAppShellRequest(event.request) ? networkFirst(event.request) : cacheFirst(event.request)
   );
 });

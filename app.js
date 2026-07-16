@@ -1304,7 +1304,18 @@ function registerServiceWorker() {
     return;
   }
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+    navigator.serviceWorker
+      .register("./sw.js")
+      .then((registration) => registration.update().catch(() => {}))
+      .catch(() => {});
+  });
+
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (sessionStorage.getItem("debate-coach-pwa.sw-reloaded") === "1") {
+      return;
+    }
+    sessionStorage.setItem("debate-coach-pwa.sw-reloaded", "1");
+    window.location.reload();
   });
 }
 
@@ -2336,7 +2347,12 @@ function App() {
                   <nav className="tabbar">
                     ${["chat", "history", "settings"].map(
                       (tab) => html`
-                        <button key=${tab} className=${`tab-btn ${state.tab === tab ? "active" : ""}`} onClick=${() => switchTab(tab)}>
+                        <button
+                          key=${tab}
+                          type="button"
+                          className=${`tab-btn ${state.tab === tab ? "active" : ""}`}
+                          onClick=${() => switchTab(tab)}
+                        >
                           <span className="tab-icon"><${TabIcon} tab=${tab} /></span>
                           <span className="tab-label">${t(tab)}</span>
                         </button>

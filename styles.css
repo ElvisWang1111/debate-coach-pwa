@@ -614,6 +614,7 @@ button {
   backdrop-filter: blur(28px);
   -webkit-backdrop-filter: blur(28px);
   border-top: 1px solid rgba(23, 23, 23, 0.05);
+  pointer-events: auto;
 }
 
 .bottom-dock.chat-open {
@@ -688,13 +689,19 @@ button {
   padding: 2px 16px max(2px, calc(var(--safe-bottom) - 14px));
   background: transparent;
   align-items: start;
+  pointer-events: auto;
 }
 
 .tab-btn {
+  position: relative;
+  z-index: 1;
+  min-height: 44px;
   padding: 2px 4px 1px;
   border-radius: 18px;
   text-align: center;
   color: #9a9894;
+  pointer-events: auto;
+  touch-action: manipulation;
 }
 
 .tab-icon {
