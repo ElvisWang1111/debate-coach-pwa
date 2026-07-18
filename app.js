@@ -1471,6 +1471,7 @@ function App() {
   const importInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   const lastTabPressRef = useRef({ tab: "", at: 0 });
+  const riskAcceptingRef = useRef(false);
   const scrollPositionsRef = useRef({ chat: {}, history: 0, settings: 0 });
 
   stateRef.current = state;
@@ -1568,24 +1569,34 @@ function App() {
 
   function acceptRiskAndEnterApp(event) {
     event?.preventDefault();
+    if (riskAcceptingRef.current) {
+      return;
+    }
+    riskAcceptingRef.current = true;
 
     if (document.activeElement && typeof document.activeElement.blur === "function") {
       document.activeElement.blur();
     }
 
-    setState((prev) =>
-      ensureSessionIfNeeded({
-        ...prev,
-        tab: "chat",
-        menuOpen: false,
-        settings: { ...prev.settings, riskAccepted: true },
-      })
-    );
+    const nextState = ensureSessionIfNeeded({
+      ...stateRef.current,
+      tab: "chat",
+      menuOpen: false,
+      settings: { ...stateRef.current.settings, riskAccepted: true },
+    });
+
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(getPersistableState(nextState)));
+    } catch (error) {
+      setState(nextState);
+      riskAcceptingRef.current = false;
+      return;
+    }
 
     window.requestAnimationFrame(() => {
       window.scrollTo({ top: 0, behavior: "auto" });
       window.requestAnimationFrame(() => {
-        document.querySelector(".bottom-dock")?.getBoundingClientRect();
+        window.location.reload();
       });
     });
   }

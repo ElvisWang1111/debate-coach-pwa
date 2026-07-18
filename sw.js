@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "debate-coach-pwa-";
-const CACHE_NAME = "debate-coach-pwa-v45";
+const CACHE_NAME = "debate-coach-pwa-v46";
 const ASSETS = [
   "./",
   "./index.html",
