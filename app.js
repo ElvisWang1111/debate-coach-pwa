@@ -1470,6 +1470,7 @@ function App() {
   const composerRef = useRef(null);
   const importInputRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const lastTabPressRef = useRef({ tab: "", at: 0 });
   const scrollPositionsRef = useRef({ chat: {}, history: 0, settings: 0 });
 
   stateRef.current = state;
@@ -1525,8 +1526,68 @@ function App() {
   }
 
   function switchTab(nextTab) {
+    if (document.activeElement && typeof document.activeElement.blur === "function") {
+      document.activeElement.blur();
+    }
     saveCurrentViewScroll();
     setState((prev) => ({ ...prev, tab: nextTab, menuOpen: false }));
+  }
+
+  function switchTabImmediately(nextTab) {
+    lastTabPressRef.current = { tab: nextTab, at: Date.now() };
+    switchTab(nextTab);
+  }
+
+  function handleTabPointerDown(nextTab, event) {
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    switchTabImmediately(nextTab);
+  }
+
+  function handleTabTouchStart(nextTab, event) {
+    if ("PointerEvent" in window) {
+      return;
+    }
+
+    event.preventDefault();
+    switchTabImmediately(nextTab);
+  }
+
+  function handleTabClick(nextTab, event) {
+    const lastPress = lastTabPressRef.current;
+    if (lastPress.tab === nextTab && Date.now() - lastPress.at < 700) {
+      event.preventDefault();
+      return;
+    }
+
+    switchTab(nextTab);
+  }
+
+  function acceptRiskAndEnterApp(event) {
+    event?.preventDefault();
+
+    if (document.activeElement && typeof document.activeElement.blur === "function") {
+      document.activeElement.blur();
+    }
+
+    setState((prev) =>
+      ensureSessionIfNeeded({
+        ...prev,
+        tab: "chat",
+        menuOpen: false,
+        settings: { ...prev.settings, riskAccepted: true },
+      })
+    );
+
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "auto" });
+      window.requestAnimationFrame(() => {
+        document.querySelector(".bottom-dock")?.getBoundingClientRect();
+      });
+    });
   }
 
   function openSessionInChat(sessionId) {
@@ -2098,13 +2159,20 @@ function App() {
                     <div className="consent-footer">
                       <button
                         className="primary-btn consent-accept-btn"
-                        onClick=${() =>
-                          setState((prev) =>
-                            ensureSessionIfNeeded({
-                              ...prev,
-                              settings: { ...prev.settings, riskAccepted: true },
-                            })
-                          )}
+                        type="button"
+                        onPointerDown=${(event) => {
+                          if (event.pointerType === "mouse" && event.button !== 0) {
+                            return;
+                          }
+                          acceptRiskAndEnterApp(event);
+                        }}
+                        onTouchStart=${(event) => {
+                          if ("PointerEvent" in window) {
+                            return;
+                          }
+                          acceptRiskAndEnterApp(event);
+                        }}
+                        onClick=${acceptRiskAndEnterApp}
                       >
                         ${t("acceptRisk")}
                       </button>
@@ -2351,7 +2419,9 @@ function App() {
                           key=${tab}
                           type="button"
                           className=${`tab-btn ${state.tab === tab ? "active" : ""}`}
-                          onClick=${() => switchTab(tab)}
+                          onPointerDown=${(event) => handleTabPointerDown(tab, event)}
+                          onTouchStart=${(event) => handleTabTouchStart(tab, event)}
+                          onClick=${(event) => handleTabClick(tab, event)}
                         >
                           <span className="tab-icon"><${TabIcon} tab=${tab} /></span>
                           <span className="tab-label">${t(tab)}</span>

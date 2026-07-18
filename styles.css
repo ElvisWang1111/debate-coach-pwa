@@ -1105,6 +1105,9 @@ button {
 }
 
 .consent-screen-page {
+  position: relative;
+  inset: auto;
+  min-height: 100vh;
   align-items: stretch;
   padding: 0;
   background: linear-gradient(180deg, var(--status-surface) 0px, var(--canvas) 132px, var(--canvas-secondary) 100%);
