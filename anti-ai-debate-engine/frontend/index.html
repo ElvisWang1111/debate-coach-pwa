@@ -1,0 +1,1443 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>辩论筑基 · AI 辩案生成引擎</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+:root {
+  --bg: #0a0a10;
+  --surface: #12121c;
+  --card: #1a1a28;
+  --border: #2a2a40;
+  --gold: #f0b429;
+  --blue: #3b82f6;
+  --green: #22c55e;
+  --red: #ef4444;
+  --gray: #6b7280;
+  --text: #e2e8f0;
+  --text-dim: #94a3b8;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --font: 'PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:var(--font); min-height:100vh; }
+
+.app { display:flex; flex-direction:column; min-height:100vh; }
+
+header {
+  background:var(--surface); border-bottom:1px solid var(--border);
+  padding:14px 24px; display:flex; align-items:center; gap:12px;
+  position:sticky; top:0; z-index:100;
+}
+header h1 { font-size:15px; color:var(--gold); font-weight:600; }
+header .subtitle { font-size:12px; color:var(--gray); }
+.dot { width:8px; height:8px; border-radius:50%; background:var(--green); animation:pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+.panels { flex:1; display:flex; flex-direction:column; }
+
+/* ── Panel ── */
+.panel { border-bottom:1px solid var(--border); }
+.panel-header {
+  background:var(--surface); padding:14px 24px;
+  display:flex; align-items:center; justify-content:space-between;
+  cursor:pointer; user-select:none; border-bottom:1px solid var(--border);
+}
+.panel-header:hover { background:var(--card); }
+.panel-title { display:flex; align-items:center; gap:10px; font-size:14px; font-weight:600; }
+.panel-num {
+  width:24px; height:24px; border-radius:6px; background:var(--border);
+  display:flex; align-items:center; justify-content:center;
+  font-size:12px; color:var(--gold); font-weight:700;
+}
+.panel-num.active { background:var(--gold); color:#000; }
+.panel-meta { font-size:12px; color:var(--gray); }
+.panel-body { padding:20px 24px; }
+
+/* ── Config ── */
+.config-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.config-grid.wide { grid-template-columns:1fr; }
+.field { display:flex; flex-direction:column; gap:6px; }
+.field label { font-size:12px; color:var(--gray); font-weight:500; }
+.field input, .field select, .field textarea {
+  background:var(--surface); border:1px solid var(--border); color:var(--text);
+  padding:9px 12px; border-radius:var(--radius-sm); font-size:13px;
+  font-family:var(--font); outline:none; transition:border-color .15s;
+}
+.field input:focus, .field select:focus, .field textarea:focus { border-color:var(--gold); }
+.field textarea { resize:vertical; min-height:60px; }
+.field .hint { font-size:11px; color:var(--gray); margin-top:2px; }
+.btn-start {
+  background:var(--gold); color:#000; border:none; padding:12px 32px;
+  border-radius:var(--radius-sm); font-size:14px; font-weight:700;
+  cursor:pointer; font-family:var(--font); transition:opacity .15s; margin-top:8px;
+}
+.btn-start:hover { opacity:.85; }
+.btn-start:disabled { opacity:.4; cursor:not-allowed; }
+
+/* ── Monitor ── */
+.monitor-bar {
+  display:flex; align-items:center; gap:16px;
+  padding:10px 0 16px; border-bottom:1px solid var(--border);
+  margin-bottom:16px; flex-wrap:wrap;
+}
+.monitor-stat { font-size:13px; color:var(--text-dim); }
+.monitor-stat b { color:var(--text); }
+.progress-track { flex:1; min-width:200px; height:4px; background:var(--border); border-radius:2px; overflow:hidden; }
+.progress-fill { height:100%; background:var(--gold); border-radius:2px; transition:width .3s; }
+.phase-badge { font-size:11px; padding:3px 10px; border-radius:20px; font-weight:600; letter-spacing:.5px; }
+.phase-sampling   { background:rgba(59,130,246,.2); color:var(--blue); }
+.phase-aggregating{ background:rgba(240,180,41,.2); color:var(--gold); }
+.phase-complete   { background:rgba(34,197,94,.2); color:var(--green); }
+.phase-created    { background:rgba(107,114,128,.2); color:var(--gray); }
+.phase-error      { background:rgba(239,68,68,.2); color:var(--red); }
+
+/* ── Branch cards ── */
+.branches-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(260px,1fr));
+  gap:10px;
+}
+.branch-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius-sm); overflow:hidden;
+  cursor:pointer; transition:border-color .2s, transform .1s;
+}
+.branch-card:hover { border-color:var(--gold); transform:translateY(-1px); }
+.branch-card.running  { border-color:var(--blue); }
+.branch-card.complete { border-color:rgba(34,197,94,.5); }
+.branch-card.error    { border-color:rgba(239,68,68,.5); }
+
+.branch-header {
+  padding:8px 12px; display:flex; align-items:center; justify-content:space-between;
+  border-bottom:1px solid var(--border);
+}
+.branch-id { font-size:12px; font-weight:700; color:var(--text-dim); font-family:monospace; }
+.branch-status-dot { width:8px; height:8px; border-radius:50%; }
+.branch-status-dot.pending  { background:var(--gray); }
+.branch-status-dot.running  { background:var(--blue); animation:pulse 1s infinite; }
+.branch-status-dot.complete { background:var(--green); }
+.branch-status-dot.error    { background:var(--red); }
+
+.branch-log {
+  padding:8px 10px; height:80px; overflow:hidden;
+  font-family:monospace; font-size:10px; color:var(--text-dim);
+  line-height:1.5; white-space:pre-wrap; word-break:break-all;
+  position:relative;
+}
+.branch-log::after {
+  content:''; position:absolute; bottom:0; left:0; right:0;
+  height:24px; background:linear-gradient(transparent, var(--surface));
+}
+.branch-footer {
+  padding:5px 10px 6px; font-size:10px; color:var(--gray);
+  border-top:1px solid var(--border);
+  display:flex; justify-content:space-between; align-items:center;
+}
+.branch-footer .view-hint { font-size:9px; color:var(--border); }
+.branch-card:hover .view-hint { color:var(--gold); }
+
+/* ── Aggregation ── */
+.agg-panel {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:14px; margin-top:16px;
+}
+.agg-title { font-size:13px; font-weight:600; color:var(--gold); margin-bottom:10px; }
+.agg-sections { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+.agg-section-chip {
+  font-size:11px; padding:3px 10px; border-radius:20px;
+  background:var(--border); color:var(--gray); transition:all .2s;
+}
+.agg-section-chip.active { background:rgba(240,180,41,.2); color:var(--gold); }
+.agg-section-chip.done   { background:rgba(34,197,94,.15); color:var(--green); }
+.agg-stream {
+  background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-sm);
+  padding:10px; height:160px; overflow-y:auto;
+  font-family:monospace; font-size:11px; color:var(--text-dim);
+  white-space:pre-wrap; word-break:break-all;
+}
+
+/* ── Result (Panel 3) ── */
+.result-toolbar {
+  display:flex; align-items:center; justify-content:space-between;
+  margin-bottom:16px; flex-wrap:wrap; gap:10px;
+}
+.result-meta { font-size:13px; color:var(--gray); }
+.download-btns { display:flex; gap:8px; }
+.btn-dl {
+  background:var(--card); border:1px solid var(--border); color:var(--text-dim);
+  padding:7px 16px; border-radius:var(--radius-sm); font-size:12px;
+  font-family:var(--font); cursor:pointer; transition:all .15s;
+}
+.btn-dl:hover { border-color:var(--gold); color:var(--gold); }
+.btn-dl.primary { background:var(--gold); color:#000; border-color:var(--gold); font-weight:700; }
+.btn-dl.primary:hover { opacity:.85; }
+
+/* ── Markdown render ── */
+.casebook-render {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:24px 28px; line-height:1.8; font-size:14px;
+}
+.casebook-render h1 { font-size:20px; color:var(--gold); margin-bottom:12px; border-bottom:1px solid var(--border); padding-bottom:10px; }
+.casebook-render h2 { font-size:16px; color:var(--gold); margin:20px 0 10px; }
+.casebook-render h3 { font-size:14px; color:var(--text); margin:14px 0 8px; font-weight:600; }
+.casebook-render p  { margin-bottom:8px; color:var(--text-dim); }
+.casebook-render ul,.casebook-render ol { padding-left:20px; margin-bottom:8px; color:var(--text-dim); }
+.casebook-render li { margin-bottom:4px; }
+.casebook-render table { width:100%; border-collapse:collapse; margin:10px 0; font-size:13px; }
+.casebook-render th { background:var(--card); color:var(--gold); padding:8px 10px; border:1px solid var(--border); text-align:left; }
+.casebook-render td { padding:7px 10px; border:1px solid var(--border); color:var(--text-dim); }
+.casebook-render tr:nth-child(even) td { background:rgba(255,255,255,.02); }
+.casebook-render code  { background:var(--card); padding:1px 6px; border-radius:4px; font-family:monospace; font-size:12px; color:var(--gold); }
+.casebook-render blockquote { border-left:3px solid var(--gold); padding-left:12px; color:var(--text-dim); margin:8px 0; }
+.casebook-render strong { color:var(--text); }
+.casebook-render hr { border:none; border-top:1px solid var(--border); margin:16px 0; }
+
+.empty-state { text-align:center; padding:48px 24px; color:var(--gray); }
+.empty-icon { font-size:40px; margin-bottom:12px; }
+.empty-text { font-size:14px; }
+
+/* ────────────────────────────────────────────────────────────────
+   MODAL
+──────────────────────────────────────────────────────────────── */
+.modal-overlay {
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,.7);
+  z-index:500; backdrop-filter:blur(4px);
+  align-items:flex-start; justify-content:center;
+  padding:24px;
+  overflow-y:auto;
+}
+.modal-overlay.open { display:flex; }
+
+.modal-panel {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); width:100%; max-width:860px;
+  display:flex; flex-direction:column;
+  max-height:calc(100vh - 48px);
+  overflow:hidden;
+  box-shadow:0 24px 80px rgba(0,0,0,.6);
+}
+
+.modal-header {
+  padding:14px 18px; border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:12px; flex-shrink:0;
+  background:var(--card);
+}
+.modal-branch-id { font-size:14px; font-weight:700; font-family:monospace; color:var(--gold); }
+.modal-wc { font-size:12px; color:var(--gray); }
+.modal-status-dot { width:10px; height:10px; border-radius:50%; }
+
+/* Tab switcher */
+.modal-tabs { display:flex; gap:2px; margin-left:auto; background:var(--border); border-radius:6px; padding:2px; }
+.tab-btn {
+  background:transparent; border:none; color:var(--gray);
+  padding:5px 14px; border-radius:5px; font-size:12px; font-family:var(--font);
+  cursor:pointer; transition:all .15s; white-space:nowrap;
+}
+.tab-btn.active { background:var(--card); color:var(--text); }
+.modal-close {
+  background:transparent; border:none; color:var(--gray);
+  font-size:16px; cursor:pointer; padding:4px 8px; border-radius:4px;
+  transition:color .15s;
+}
+.modal-close:hover { color:var(--red); }
+
+.modal-body { flex:1; overflow-y:auto; padding:20px; }
+
+/* Raw text view */
+.modal-raw {
+  font-family:monospace; font-size:11px; color:var(--text-dim);
+  white-space:pre-wrap; word-break:break-all; line-height:1.6;
+  background:var(--bg); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:14px;
+}
+
+/* Markdown rendered branch content */
+.md-render { font-size:13px; line-height:1.8; color:var(--text); }
+.md-render h2 { font-size:15px; color:var(--gold); font-weight:700; margin:20px 0 10px; padding-bottom:6px; border-bottom:1px solid var(--border); }
+.md-render h3 { font-size:13px; color:var(--blue); font-weight:600; margin:14px 0 6px; }
+.md-render h4 { font-size:12px; color:var(--text-dim); font-weight:600; margin:10px 0 4px; }
+.md-render p { margin:6px 0; }
+.md-render ul, .md-render ol { padding-left:18px; margin:6px 0; }
+.md-render li { margin:3px 0; }
+.md-render table { width:100%; border-collapse:collapse; margin:10px 0; font-size:12px; }
+.md-render th { background:var(--card); color:var(--gold); padding:7px 10px; text-align:left; border:1px solid var(--border); }
+.md-render td { padding:6px 10px; border:1px solid var(--border); vertical-align:top; }
+.md-render tr:nth-child(even) td { background:rgba(255,255,255,.02); }
+.md-render strong { color:var(--text); }
+.md-render code { font-family:monospace; font-size:11px; background:var(--card); padding:1px 5px; border-radius:3px; }
+.md-render pre { background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px; overflow-x:auto; }
+.md-render blockquote { border-left:3px solid var(--gold); padding-left:12px; color:var(--text-dim); margin:8px 0; }
+.md-render hr { border:none; border-top:1px solid var(--border); margin:16px 0; }
+
+/* ────────────────────────────────────────────────────────────────
+   CASEBOOK JSON RENDERER
+──────────────────────────────────────────────────────────────── */
+.cb-section { margin-bottom:28px; }
+
+.cb-section-header {
+  font-size:15px; font-weight:700; color:var(--gold);
+  padding:8px 0 10px; border-bottom:2px solid var(--border);
+  margin-bottom:14px; display:flex; align-items:center; gap:10px;
+}
+.cb-count {
+  font-size:11px; font-weight:500; color:var(--gray);
+  background:var(--border); padding:2px 8px; border-radius:10px;
+}
+.cb-sub {
+  font-size:12px; font-weight:600; color:var(--text-dim);
+  text-transform:uppercase; letter-spacing:.8px;
+  margin:14px 0 8px; padding-left:8px;
+  border-left:2px solid var(--gold);
+}
+
+/* E1 */
+.cb-term-block {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:12px 14px; margin-bottom:10px;
+}
+.cb-term-name { font-size:14px; font-weight:700; color:var(--text); margin-bottom:8px; }
+.cb-interp {
+  background:var(--surface); border-radius:var(--radius-sm);
+  padding:8px 10px; margin-bottom:6px;
+}
+.cb-tag {
+  display:inline-block; font-size:10px; padding:2px 8px; border-radius:10px;
+  background:rgba(240,180,41,.15); color:var(--gold);
+  margin-bottom:5px; font-weight:600;
+}
+.cb-interp p { font-size:13px; color:var(--text-dim); line-height:1.6; margin-bottom:4px; }
+.cb-rationale { font-size:12px !important; color:var(--gray) !important; font-style:italic; }
+.cb-basis { font-size:11px !important; color:var(--border) !important; }
+
+.cb-case, .cb-theory {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:10px 14px; margin-bottom:8px;
+}
+.cb-case-title, .cb-theory-name {
+  font-size:13px; font-weight:600; color:var(--text); margin-bottom:6px;
+}
+.cb-author { font-size:11px; color:var(--gray); font-weight:400; margin-left:6px; }
+.cb-case p, .cb-theory p { font-size:13px; color:var(--text-dim); line-height:1.6; margin-bottom:4px; }
+
+/* E3 table */
+.cb-table {
+  width:100%; border-collapse:collapse; font-size:12px; margin:4px 0;
+}
+.cb-table th {
+  background:var(--card); color:var(--gold); padding:7px 10px;
+  border:1px solid var(--border); text-align:left; font-weight:600; font-size:11px;
+}
+.cb-table td { padding:7px 10px; border:1px solid var(--border); color:var(--text-dim); vertical-align:top; }
+.cb-table tr:hover td { background:rgba(255,255,255,.02); }
+.cb-arg-id { font-family:monospace; font-size:10px; color:var(--gray); }
+.cb-stance {
+  display:inline-block; font-size:10px; padding:2px 7px; border-radius:10px; font-weight:600;
+}
+.cb-stance.our { background:rgba(34,197,94,.15); color:var(--green); }
+.cb-stance.opp { background:rgba(239,68,68,.15); color:var(--red); }
+.cb-elab-row td { background:rgba(240,180,41,.04) !important; font-style:italic; font-size:11px !important; color:var(--gray) !important; }
+
+/* E4 */
+.cb-def-block {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:12px 14px; margin-bottom:10px;
+}
+.cb-def-kw { font-size:15px; font-weight:700; color:var(--gold); margin-bottom:8px; }
+.cb-def-row { display:flex; gap:6px; margin-bottom:5px; align-items:flex-start; }
+.cb-def-label { font-size:10px; color:var(--gray); min-width:70px; padding-top:2px; flex-shrink:0; }
+.cb-def-val { font-size:13px; color:var(--text-dim); line-height:1.6; }
+
+.cb-b0-block {
+  background:rgba(240,180,41,.06); border:1px solid rgba(240,180,41,.3);
+  border-radius:var(--radius-sm); padding:14px; margin-bottom:14px;
+}
+.cb-b0-label { font-size:11px; color:var(--gold); font-weight:700; margin-bottom:6px; letter-spacing:.5px; }
+.cb-b0-stmt { font-size:14px; color:var(--text); font-weight:600; line-height:1.7; margin-bottom:8px; }
+.cb-b0-why { font-size:12px; color:var(--text-dim); line-height:1.6; }
+
+.cb-sp-block {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:12px 14px; margin-bottom:8px;
+}
+.cb-sp-header { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+.cb-sp-id { font-size:10px; color:var(--gray); font-family:monospace; }
+.cb-sp-claim { font-size:13px; font-weight:600; color:var(--text); line-height:1.5; }
+.cb-sp-b0link { font-size:11px; color:var(--text-dim); font-style:italic; margin-bottom:8px; }
+.cb-sp-args { padding-left:0; list-style:none; }
+.cb-sp-args li {
+  background:var(--surface); border-radius:4px; padding:6px 10px;
+  margin-bottom:4px; font-size:12px; color:var(--text-dim);
+  border-left:2px solid var(--border);
+}
+.cb-sp-args li .ev { font-size:11px; color:var(--gray); margin-top:2px; }
+
+/* E5 */
+.cb-defense-block {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius-sm); margin-bottom:8px; overflow:hidden;
+}
+.cb-defense-head {
+  padding:8px 12px; background:rgba(239,68,68,.08);
+  border-bottom:1px solid var(--border);
+  display:flex; gap:8px; align-items:center;
+}
+.cb-atk-type { font-size:10px; font-weight:700; color:var(--red); }
+.cb-atk-path { font-size:10px; color:var(--gray); }
+.cb-defense-body { padding:10px 12px; }
+.cb-def-q { font-size:12px; color:var(--text); margin-bottom:4px; }
+.cb-def-q .label { font-size:10px; color:var(--gray); margin-right:5px; }
+.cb-resp-strategy {
+  display:inline-block; font-size:9px; padding:1px 7px;
+  border-radius:10px; font-weight:600; margin-bottom:4px;
+}
+.cb-resp-strategy.consume { background:rgba(59,130,246,.15); color:var(--blue); }
+.cb-resp-strategy.reverse { background:rgba(34,197,94,.15); color:var(--green); }
+.cb-resp-strategy.block   { background:rgba(240,180,41,.15); color:var(--gold); }
+
+/* E6 */
+.cb-opp-block {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius-sm); margin-bottom:12px; overflow:hidden;
+}
+.cb-opp-head {
+  padding:10px 14px; background:rgba(239,68,68,.06);
+  border-bottom:1px solid var(--border);
+}
+.cb-opp-chain { font-size:13px; color:var(--text); line-height:1.6; margin-bottom:4px; }
+.cb-opp-ev { font-size:11px; color:var(--gray); font-style:italic; }
+.cb-atk-row {
+  padding:10px 14px; border-bottom:1px solid var(--border); display:flex; gap:10px;
+}
+.cb-atk-row:last-child { border-bottom:none; }
+.cb-atk-type-badge {
+  font-size:10px; font-weight:700; min-width:60px; flex-shrink:0;
+  padding-top:2px;
+}
+.cb-atk-type-badge.factual  { color:#f59e0b; }
+.cb-atk-type-badge.logical  { color:#8b5cf6; }
+.cb-atk-type-badge.value    { color:#ec4899; }
+.cb-atk-content { flex:1; }
+.cb-atk-content p { font-size:12px; color:var(--text-dim); line-height:1.6; margin-bottom:3px; }
+.cb-atk-core { font-size:12px; color:var(--text); font-weight:600; }
+
+/* E7 */
+.cb-bf-block {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius-sm); margin-bottom:12px; overflow:hidden;
+}
+.cb-bf-name {
+  padding:10px 14px; font-size:14px; font-weight:700; color:var(--gold);
+  border-bottom:1px solid var(--border); background:rgba(240,180,41,.06);
+}
+.cb-bf-steps { display:grid; gap:0; }
+.cb-bf-step {
+  display:grid; grid-template-columns:60px 1fr;
+  border-bottom:1px solid var(--border); min-height:44px;
+}
+.cb-bf-step:last-child { border-bottom:none; }
+.cb-step-label {
+  padding:10px 12px; font-size:11px; font-weight:700;
+  border-right:1px solid var(--border);
+  display:flex; align-items:flex-start; padding-top:11px;
+}
+.cb-step-label.q   { color:var(--gold); }
+.cb-step-label.ch  { color:var(--blue); }
+.cb-step-label.ret { color:var(--green); }
+.cb-step-label.tr  { color:var(--gray); }
+.cb-step-content { padding:10px 14px; }
+.cb-step-main { font-size:13px; color:var(--text); line-height:1.6; }
+.cb-step-pred { font-size:11px; color:var(--gray); margin-top:4px; font-style:italic; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width:6px; height:6px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+::-webkit-scrollbar-thumb:hover { background:var(--gray); }
+
+/* Toast */
+.toast {
+  position:fixed; bottom:24px; right:24px;
+  background:var(--card); border:1px solid var(--border);
+  padding:10px 16px; border-radius:var(--radius-sm);
+  font-size:13px; color:var(--text); z-index:999;
+  opacity:0; transition:opacity .2s; max-width:320px;
+}
+.toast.show { opacity:1; }
+.toast.error   { border-color:var(--red); color:var(--red); }
+.toast.success { border-color:var(--green); color:var(--green); }
+</style>
+</head>
+<body>
+<div class="app">
+
+<header>
+  <div class="dot"></div>
+  <h1>辩论筑基 · AI 辩案生成引擎</h1>
+  <span class="subtitle">Monte Carlo Argument Sampling</span>
+</header>
+
+<div class="panels">
+
+  <!-- ══ PANEL 1 ══ -->
+  <div class="panel" id="panel1">
+    <div class="panel-header" onclick="togglePanel('panel1')">
+      <div class="panel-title">
+        <div class="panel-num active" id="pnum1">1</div>
+        辩题配置 &amp; 启动
+      </div>
+      <div class="panel-meta" id="p1meta">填写辩题，配置 API，启动生成</div>
+    </div>
+    <div class="panel-body" id="panel1-body">
+      <div style="display:flex;flex-direction:column;gap:14px">
+
+        <div class="config-grid wide">
+          <div class="field">
+            <label>辩题</label>
+            <textarea id="motion" placeholder="例：人工智能的普及对人类创造力是促进大于阻碍" rows="2"></textarea>
+          </div>
+        </div>
+
+        <div class="config-grid">
+          <div class="field">
+            <label>持方</label>
+            <select id="stance">
+              <option value="正方">正方（支持辩题）</option>
+              <option value="反方">反方（反对辩题）</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>赛制</label>
+            <select id="format">
+              <option value="标准传辩">标准传辩（立论/质询/驳论/自由辩/结辩）</option>
+              <option value="BP英国议会制">BP 英国议会制</option>
+              <option value="奥瑞冈式政策辩">奥瑞冈式政策辩</option>
+              <option value="自定义">自定义</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="config-grid">
+          <div class="field">
+            <label>分支数量</label>
+            <input type="number" id="n_branches" value="10" min="1" max="50">
+            <span class="hint">建议 8-20。越多覆盖越广，消耗越大。</span>
+          </div>
+          <div class="field">
+            <label>并发数</label>
+            <input type="number" id="parallel" value="5" min="1" max="10">
+            <span class="hint">同时运行的分支数，注意 API Rate Limit。</span>
+          </div>
+        </div>
+
+        <div class="config-grid wide">
+          <div class="field">
+            <label>模型 ID</label>
+            <input type="text" id="model" value="deepseek-chat" placeholder="claude-opus-4-6 / gpt-4o / deepseek-chat">
+          </div>
+        </div>
+
+        <div class="config-grid">
+          <div class="field">
+            <label>API Key</label>
+            <input type="password" id="api_key" placeholder="sk-... 或其他提供商的 Key">
+          </div>
+          <div class="field">
+            <label>API URL（留空使用 Anthropic 官方）</label>
+            <input type="text" id="api_url" value="https://api.deepseek.com/v1" placeholder="https://api.anthropic.com（留空默认）">
+            <span class="hint">兼容 OpenAI 格式的自定义端点（DeepSeek / Kimi / 本地等）</span>
+          </div>
+        </div>
+
+        <div>
+          <button class="btn-start" onclick="startJob()" id="btn-start">⚡ 开始生成辩案</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ PANEL 2 ══ -->
+  <div class="panel" id="panel2">
+    <div class="panel-header" onclick="togglePanel('panel2')">
+      <div class="panel-title">
+        <div class="panel-num" id="pnum2">2</div>
+        并行采样监控
+      </div>
+      <div class="panel-meta" id="p2meta">等待启动</div>
+    </div>
+    <div class="panel-body" id="panel2-body" style="display:none">
+
+      <div class="monitor-bar">
+        <div class="monitor-stat">分支进度 <b id="prog-count">0/0</b></div>
+        <div class="progress-track"><div class="progress-fill" id="prog-fill" style="width:0%"></div></div>
+        <div class="phase-badge phase-created" id="phase-badge">CREATED</div>
+      </div>
+
+      <div class="branches-grid" id="branches-grid"></div>
+
+      <div class="agg-panel" id="agg-panel" style="display:none">
+        <div class="agg-title">⚙️ 聚合进行中</div>
+        <div class="agg-sections" id="agg-sections"></div>
+        <div class="agg-stream" id="agg-stream"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══ PANEL 3 ══ -->
+  <div class="panel" id="panel3">
+    <div class="panel-header" onclick="togglePanel('panel3')">
+      <div class="panel-title">
+        <div class="panel-num" id="pnum3">3</div>
+        聚合辩案
+      </div>
+      <div class="panel-meta" id="p3meta">等待生成完成</div>
+    </div>
+    <div class="panel-body" id="panel3-body">
+      <div class="empty-state" id="result-empty">
+        <div class="empty-icon">📋</div>
+        <div class="empty-text">辩案生成完成后将在此显示</div>
+      </div>
+      <div id="result-content" style="display:none">
+        <div class="result-toolbar">
+          <div class="result-meta" id="result-meta"></div>
+          <div class="download-btns">
+            <button class="btn-dl primary" onclick="download('md')">⬇ Markdown</button>
+            <button class="btn-dl" onclick="download('json')">⬇ JSON</button>
+            <button class="btn-dl" onclick="download('txt')">⬇ 纯文本</button>
+          </div>
+        </div>
+        <div class="casebook-render" id="casebook-render"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══ MODAL ══ -->
+<div class="modal-overlay" id="modal" onclick="onModalOverlayClick(event)">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <div class="modal-status-dot" id="modal-dot"></div>
+      <span class="modal-branch-id" id="modal-bid"></span>
+      <span class="modal-wc" id="modal-wc"></span>
+      <div class="modal-tabs">
+        <button class="tab-btn active" id="tab-fmt" onclick="switchTab('formatted')">格式化视图</button>
+        <button class="tab-btn" id="tab-raw" onclick="switchTab('raw')">原始文本</button>
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="modal-formatted"></div>
+      <div id="modal-raw-view" class="modal-raw" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let currentJobId = null;
+let eventSource = null;
+let branchData = {};       // bid → { text: string, result: object|null, status: string }
+let modalBid = null;
+let modalLive = false;     // is modal showing a running branch
+let aggBuffer = '';
+let compileBuffer = '';
+
+// ── Panel toggle ─────────────────────────────────────────────────────────────
+const panelOpen = { panel1:true, panel2:false, panel3:false };
+function togglePanel(id) {
+  panelOpen[id] = !panelOpen[id];
+  document.getElementById(id+'-body').style.display = panelOpen[id] ? '' : 'none';
+}
+function openPanel(id) {
+  panelOpen[id] = true;
+  document.getElementById(id+'-body').style.display = '';
+}
+
+// ── Toast ────────────────────────────────────────────────────────────────────
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (type ? ' '+type : '');
+  setTimeout(() => t.className = 'toast', 3500);
+}
+
+// ── Start ────────────────────────────────────────────────────────────────────
+async function startJob() {
+  const motion = document.getElementById('motion').value.trim();
+  const api_key = document.getElementById('api_key').value.trim();
+  if (!motion) { showToast('请填写辩题', 'error'); return; }
+  if (!api_key) { showToast('请填写 API Key', 'error'); return; }
+
+  const payload = {
+    motion, stance: document.getElementById('stance').value,
+    format: document.getElementById('format').value,
+    n_branches: parseInt(document.getElementById('n_branches').value),
+    parallel: parseInt(document.getElementById('parallel').value),
+    model: document.getElementById('model').value.trim(),
+    api_key, api_url: document.getElementById('api_url').value.trim(),
+  };
+
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('btn-start').textContent = '⏳ 生成中...';
+
+  try {
+    const res = await fetch('/api/start', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload),
+    });
+    if (!res.ok) { const e=await res.json(); throw new Error(e.detail||'Start failed'); }
+    const { job_id } = await res.json();
+    currentJobId = job_id;
+    initMonitorUI(payload.n_branches);
+    connectSSE(job_id);
+    openPanel('panel2');
+    document.getElementById('p1meta').textContent = `Job ${job_id} · 运行中`;
+  } catch(e) {
+    showToast(e.message,'error');
+    document.getElementById('btn-start').disabled = false;
+    document.getElementById('btn-start').textContent = '⚡ 开始生成辩案';
+  }
+}
+
+// ── Init monitor ─────────────────────────────────────────────────────────────
+function initMonitorUI(n) {
+  branchData = {};
+  aggBuffer = ''; compileBuffer = '';
+  const grid = document.getElementById('branches-grid');
+  grid.innerHTML = '';
+  for (let i=1; i<=n; i++) {
+    const bid = String(i).padStart(3,'0');
+    branchData[bid] = { text:'', result:null, status:'pending' };
+    grid.innerHTML += `
+      <div class="branch-card pending" id="bc-${bid}" onclick="openBranchModal('${bid}')">
+        <div class="branch-header">
+          <span class="branch-id">#${bid}</span>
+          <span class="branch-status-dot pending" id="bdot-${bid}"></span>
+        </div>
+        <div class="branch-log" id="blog-${bid}"></div>
+        <div class="branch-footer">
+          <span id="bfoot-${bid}">等待中</span>
+          <span class="view-hint">点击查看详情 →</span>
+        </div>
+      </div>`;
+  }
+  updateProgress(0, n);
+}
+
+// ── SSE ──────────────────────────────────────────────────────────────────────
+function connectSSE(job_id) {
+  if (eventSource) eventSource.close();
+  eventSource = new EventSource(`/api/stream/${job_id}`);
+  eventSource.onmessage = e => {
+    try { handleEvent(JSON.parse(e.data)); }
+    catch(err) { console.error('parse error', err); }
+  };
+  eventSource.onerror = () => { showToast('SSE 连接断开', 'error'); eventSource.close(); };
+}
+
+function handleEvent(ev) {
+  switch(ev.type) {
+
+    case 'job_state': {
+      const d = ev.data;
+      setPhase(d.status);
+      updateProgress(d.progress.completed, d.progress.total);
+      Object.values(d.branches).forEach(b => {
+        setBranchStatus(b.id, b.status);
+        if (b.word_count) setFooter(b.id, `✓ ${b.word_count.toLocaleString()} 字符`);
+      });
+      break;
+    }
+
+    case 'sampling_start':
+      setPhase('sampling');
+      document.getElementById('p2meta').textContent = `并行采样 · ${ev.n_branches} 个分支`;
+      break;
+
+    case 'branch_start':
+      branchData[ev.branch_id].status = 'running';
+      setBranchStatus(ev.branch_id, 'running');
+      setFooter(ev.branch_id, '生成中...');
+      if (modalBid === ev.branch_id) refreshModalHeader();
+      break;
+
+    case 'branch_token': {
+      const bd = branchData[ev.branch_id];
+      bd.text += ev.token;
+      // Update card log (last 15 lines)
+      const el = document.getElementById('blog-'+ev.branch_id);
+      if (el) {
+        const lines = bd.text.split('\n');
+        el.textContent = lines.slice(-15).join('\n');
+      }
+      // If modal is open on this branch, append token
+      if (modalBid === ev.branch_id && modalLive) {
+        const rv = document.getElementById('modal-raw-view');
+        if (rv.style.display !== 'none') { rv.textContent += ev.token; rv.scrollTop = rv.scrollHeight; }
+        const mf = document.getElementById('modal-formatted');
+        if (mf.style.display !== 'none') {
+          renderBranchFormattedContent(bd, mf);
+        }
+      }
+      break;
+    }
+
+    case 'branch_complete': {
+      const bd = branchData[ev.branch_id];
+      bd.status = 'complete';
+      bd.word_count = ev.word_count;
+      setBranchStatus(ev.branch_id, 'complete');
+      setFooter(ev.branch_id, `✓ ${(ev.word_count||0).toLocaleString()} 字符`);
+      // Fetch parsed result
+      fetchBranchResult(ev.branch_id);
+      // Update progress
+      const done = Object.values(branchData).filter(b=>b.status==='complete').length;
+      const total = Object.keys(branchData).length;
+      updateProgress(done, total);
+      if (modalBid === ev.branch_id) {
+        modalLive = false;
+        refreshModalHeader();
+        // Re-render formatted view
+        setTimeout(() => refreshModalContent(), 500);
+      }
+      break;
+    }
+
+    case 'branch_error': {
+      branchData[ev.branch_id].status = 'error';
+      setBranchStatus(ev.branch_id, 'error');
+      setFooter(ev.branch_id, '❌ '+(ev.error||'').slice(0,40));
+      if (modalBid === ev.branch_id) refreshModalHeader();
+      break;
+    }
+
+    case 'sampling_done':
+      setPhase('aggregating');
+      document.getElementById('p2meta').textContent = '采样完成，聚合中...';
+      document.getElementById('agg-panel').style.display = '';
+      break;
+
+    case 'agg_start': {
+      const chips = document.getElementById('agg-sections');
+      chips.innerHTML = '';
+      (ev.sections||[]).forEach(s => {
+        chips.innerHTML += `<span class="agg-section-chip" id="chip-${s}">${s.toUpperCase()}</span>`;
+      });
+      break;
+    }
+    case 'agg_section_start': {
+      document.querySelectorAll('.agg-section-chip').forEach(c=>c.classList.remove('active'));
+      const chip = document.getElementById('chip-'+ev.section);
+      if (chip) chip.classList.add('active');
+      const s = document.getElementById('agg-stream');
+      s.textContent += `\n▶ ${ev.label}（${ev.n_branches} 分支）\n`;
+      s.scrollTop = s.scrollHeight;
+      break;
+    }
+    case 'agg_token': {
+      aggBuffer += ev.token;
+      const s = document.getElementById('agg-stream');
+      s.textContent += ev.token;
+      s.scrollTop = s.scrollHeight;
+      break;
+    }
+    case 'agg_section_done': {
+      const chip = document.getElementById('chip-'+ev.section);
+      if (chip) { chip.classList.remove('active'); chip.classList.add('done'); }
+      break;
+    }
+    case 'agg_compiling': {
+      const s = document.getElementById('agg-stream');
+      s.textContent += '\n\n✦ 正在编译最终辩案...\n';
+      s.scrollTop = s.scrollHeight;
+      break;
+    }
+    case 'compile_token':
+      compileBuffer += ev.token;
+      const s2 = document.getElementById('agg-stream');
+      s2.textContent += ev.token;
+      s2.scrollTop = s2.scrollHeight;
+      break;
+
+    case 'job_complete':
+      setPhase('complete');
+      document.getElementById('btn-start').disabled = false;
+      document.getElementById('btn-start').textContent = '⚡ 重新生成';
+      document.getElementById('p2meta').textContent = '全部完成';
+      document.getElementById('p3meta').textContent = '辩案已就绪';
+      showResult(ev.casebook || compileBuffer);
+      openPanel('panel3');
+      if (eventSource) eventSource.close();
+      showToast('辩案生成完成！', 'success');
+      break;
+
+    case 'job_error':
+      setPhase('error');
+      showToast('生成出错：'+ev.error, 'error');
+      document.getElementById('btn-start').disabled = false;
+      document.getElementById('btn-start').textContent = '⚡ 重试';
+      if (eventSource) eventSource.close();
+      break;
+
+    case 'ping': break;
+  }
+}
+
+async function fetchBranchResult(bid) {
+  if (!currentJobId) return;
+  try {
+    const res = await fetch(`/api/branch/${currentJobId}/${bid}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.result) branchData[bid].result = data.result;
+    // Populate text from _raw if stream wasn't captured
+    if (!branchData[bid].text && data.result && data.result._raw) {
+      branchData[bid].text = data.result._raw;
+    } else if (!branchData[bid].text && data.text) {
+      branchData[bid].text = data.text;
+    }
+    if (data.status) branchData[bid].status = data.status;
+    if (modalBid === bid) refreshModalContent();
+  } catch(e) { /* ignore */ }
+}
+
+// ── UI helpers ───────────────────────────────────────────────────────────────
+function setBranchStatus(bid, status) {
+  const card = document.getElementById('bc-'+bid);
+  const dot  = document.getElementById('bdot-'+bid);
+  if (!card||!dot) return;
+  card.className = 'branch-card '+status;
+  dot.className  = 'branch-status-dot '+status;
+}
+function setFooter(bid, text) {
+  const el = document.getElementById('bfoot-'+bid);
+  if (el) el.textContent = text;
+}
+function updateProgress(done, total) {
+  document.getElementById('prog-count').textContent = `${done}/${total}`;
+  document.getElementById('prog-fill').style.width = total ? `${Math.round(done/total*100)}%` : '0%';
+}
+const PHASE_LABELS = { created:'CREATED', sampling:'SAMPLING', aggregating:'AGGREGATING', complete:'COMPLETE', error:'ERROR' };
+function setPhase(status) {
+  const badge = document.getElementById('phase-badge');
+  badge.textContent = PHASE_LABELS[status]||status.toUpperCase();
+  badge.className = 'phase-badge phase-'+status;
+  if (status==='complete') document.getElementById('pnum2').classList.add('active');
+}
+function showResult(md) {
+  document.getElementById('result-empty').style.display = 'none';
+  document.getElementById('result-content').style.display = '';
+  document.getElementById('casebook-render').innerHTML = marked.parse(md||'');
+  document.getElementById('result-meta').textContent = `Job ${currentJobId} · 生成完成`;
+  document.getElementById('pnum3').classList.add('active');
+}
+async function download(fmt) {
+  if (!currentJobId) return;
+  window.open(`/api/download/${currentJobId}/${fmt}`, '_blank');
+}
+
+// ── Modal ────────────────────────────────────────────────────────────────────
+function openBranchModal(bid) {
+  modalBid = bid;
+  const bd = branchData[bid];
+  modalLive = bd.status === 'running';
+
+  document.getElementById('modal').classList.add('open');
+  refreshModalHeader();
+  switchTab('formatted');
+  refreshModalContent();
+  document.body.style.overflow = 'hidden';
+
+  // Always fetch latest data from server (populates text for already-completed branches)
+  fetchBranchResult(bid);
+}
+
+function refreshModalHeader() {
+  const bd = branchData[modalBid];
+  if (!bd) return;
+  document.getElementById('modal-bid').textContent = `Branch #${modalBid}`;
+  const dot = document.getElementById('modal-dot');
+  dot.className = 'modal-status-dot branch-status-dot '+bd.status;
+  const wc = bd.word_count ? `· ${bd.word_count.toLocaleString()} 字符` : '';
+  const statusLabel = {pending:'等待中', running:'生成中...', complete:'✓ 完成', error:'❌ 错误'}[bd.status]||bd.status;
+  document.getElementById('modal-wc').textContent = `${statusLabel} ${wc}`;
+}
+
+function refreshModalContent() {
+  const bd = branchData[modalBid];
+  if (!bd) return;
+
+  const mf  = document.getElementById('modal-formatted');
+  const mrv = document.getElementById('modal-raw-view');
+
+  // Raw view always shows full text
+  mrv.textContent = bd.text || '（暂无内容）';
+
+  renderBranchFormattedContent(bd, mf);
+}
+
+function switchTab(tab) {
+  const mf  = document.getElementById('modal-formatted');
+  const mrv = document.getElementById('modal-raw-view');
+  const tf  = document.getElementById('tab-fmt');
+  const tr  = document.getElementById('tab-raw');
+  if (tab==='formatted') {
+    mf.style.display=''; mrv.style.display='none';
+    tf.classList.add('active'); tr.classList.remove('active');
+  } else {
+    mf.style.display='none'; mrv.style.display='';
+    tf.classList.remove('active'); tr.classList.add('active');
+    // Make sure raw is up to date
+    const bd = branchData[modalBid];
+    if (bd) document.getElementById('modal-raw-view').textContent = bd.text||'（暂无内容）';
+  }
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+  document.body.style.overflow = '';
+  modalBid = null; modalLive = false;
+}
+function onModalOverlayClick(e) {
+  if (e.target === document.getElementById('modal')) closeModal();
+}
+document.addEventListener('keydown', e => { if (e.key==='Escape') closeModal(); });
+
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function renderBranchFormattedContent(bd, mountEl) {
+  if (!mountEl) return;
+
+  if (bd.result && (bd.result.e1 || bd.result.e3 || bd.result.e4 || bd.result.e5 || bd.result.e6 || bd.result.e7)) {
+    mountEl.innerHTML = renderCasebookJSON(bd.result);
+    return;
+  }
+
+  const raw = bd.text || '';
+  const parsed = _tryParseJSON(raw);
+  if (parsed && (parsed.e1 || parsed.e3 || parsed.e4 || parsed.e5 || parsed.e6 || parsed.e7)) {
+    mountEl.innerHTML = renderCasebookJSON(parsed);
+    return;
+  }
+
+  if (raw.includes('## E')) {
+    const mdHtml = typeof marked !== 'undefined' ? marked.parse(raw) : `<pre>${esc(raw)}</pre>`;
+    mountEl.innerHTML = `<div class="md-render">${mdHtml}</div>`;
+    return;
+  }
+
+  mountEl.innerHTML = `<pre style="font-family:monospace;font-size:12px;color:var(--text-dim);white-space:pre-wrap;word-break:break-all;line-height:1.6;padding:4px">${esc(raw || '（暂无内容）')}</pre>`;
+}
+
+function _tryParseJSON(text) {
+  if (!text) return null;
+  const t = text.trim();
+  // 1. Direct parse — works when text IS pure JSON
+  try { return JSON.parse(t); } catch(e) {}
+  // 2. Extract from code block
+  const cb = t.match(/```[^\n]*\n([\s\S]+)\n```/);
+  if (cb) { try { return JSON.parse(cb[1].trim()); } catch(e) {} }
+  // 3. First { ... last } — most forgiving
+  const a = t.indexOf('{'), b = t.lastIndexOf('}');
+  if (a >= 0 && b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch(e) {} }
+  // 4. Streaming partial JSON — keep only fully closed top-level entries
+  const partial = _tryParsePartialCasebookJSON(t);
+  if (partial) return partial;
+  return null;
+}
+
+function _tryParsePartialCasebookJSON(text) {
+  const src = _stripCodeFence(text);
+  const start = src.indexOf('{');
+  if (start < 0) return null;
+
+  const body = src.slice(start + 1);
+  const entries = [];
+  let i = 0;
+
+  while (i < body.length) {
+    while (i < body.length && /[\s,]/.test(body[i])) i++;
+    if (i >= body.length || body[i] === '}') break;
+    if (body[i] !== '"') break;
+
+    const keyStart = i;
+    const keyEnd = _findStringEnd(body, i);
+    if (keyEnd < 0) break;
+    i = keyEnd + 1;
+
+    while (i < body.length && /\s/.test(body[i])) i++;
+    if (body[i] !== ':') break;
+    i++;
+    while (i < body.length && /\s/.test(body[i])) i++;
+
+    const valueEnd = _findTopLevelValueEnd(body, i);
+    if (valueEnd < 0) break;
+
+    const entry = body.slice(keyStart, valueEnd).trim().replace(/,\s*$/, '');
+    if (entry) entries.push(entry);
+    i = valueEnd;
+  }
+
+  if (!entries.length) return null;
+  try { return JSON.parse(`{${entries.join(',')}}`); } catch(e) { return null; }
+}
+
+function _stripCodeFence(text) {
+  const trimmed = (text || '').trim();
+  if (!trimmed.startsWith('```')) return trimmed;
+  const firstNl = trimmed.indexOf('\n');
+  if (firstNl < 0) return trimmed;
+  const withoutOpen = trimmed.slice(firstNl + 1);
+  return withoutOpen.replace(/\n```[\s\S]*$/, '').trim();
+}
+
+function _findStringEnd(text, start) {
+  let escaped = false;
+  for (let i = start + 1; i < text.length; i++) {
+    const ch = text[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') return i;
+  }
+  return -1;
+}
+
+function _findTopLevelValueEnd(text, start) {
+  let depthObj = 0;
+  let depthArr = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '{') {
+      depthObj++;
+      continue;
+    }
+    if (ch === '}') {
+      if (depthObj === 0 && depthArr === 0) return i;
+      depthObj--;
+      continue;
+    }
+    if (ch === '[') {
+      depthArr++;
+      continue;
+    }
+    if (ch === ']') {
+      depthArr--;
+      continue;
+    }
+    if (ch === ',' && depthObj === 0 && depthArr === 0) {
+      return i;
+    }
+  }
+
+  return -1;
+}
+
+// ════════════════════════════════════════════════════════════════
+// CASEBOOK JSON RENDERER
+// ════════════════════════════════════════════════════════════════
+
+function renderCasebookJSON(data) {
+  let html = '';
+  if (data.e1) html += renderE1(data.e1);
+  if (data.e3) html += renderE3(data.e3);
+  if (data.e4) html += renderE4(data.e4);
+  if (data.e5) html += renderE5(data.e5);
+  if (data.e6) html += renderE6(data.e6);
+  if (data.e7) html += renderE7(data.e7);
+  return html || '<p style="color:var(--gray);padding:20px">（无可渲染内容）</p>';
+}
+
+// ── E1 ───────────────────────────────────────────────────────────
+function renderE1(e1) {
+  let h = '<div class="cb-section"><div class="cb-section-header">E1 · 资料搜集</div>';
+
+  if (e1.key_terms?.length) {
+    h += '<div class="cb-sub">关键词解释</div>';
+    e1.key_terms.forEach(term => {
+      h += `<div class="cb-term-block"><div class="cb-term-name">「${esc(term.term)}」</div>`;
+      (term.interpretations||[]).forEach(interp => {
+        h += `<div class="cb-interp">
+          <span class="cb-tag">${esc(interp.perspective||'来源')}</span>
+          <p>${esc(interp.content||'')}</p>
+          ${interp.rationale ? `<p class="cb-rationale">重要性：${esc(interp.rationale)}</p>`:''}
+        </div>`;
+      });
+      h += '</div>';
+    });
+  }
+
+  if (e1.reference_cases?.length) {
+    h += '<div class="cb-sub">参考案例</div>';
+    e1.reference_cases.forEach((c,i) => {
+      h += `<div class="cb-case">
+        <div class="cb-case-title">${i+1}. ${esc(c.title||'')}</div>
+        <p>${esc(c.description||'')}</p>
+        <p class="cb-rationale">与辩题关联：${esc(c.relevance||'')}</p>
+        <p class="cb-basis">知识依据：${esc(c.knowledge_basis||'')}</p>
+      </div>`;
+    });
+  }
+
+  if (e1.theories?.length) {
+    h += '<div class="cb-sub">专业理论</div>';
+    e1.theories.forEach((t,i) => {
+      h += `<div class="cb-theory">
+        <div class="cb-theory-name">${i+1}. ${esc(t.name||'')} <span class="cb-author">${esc(t.author_source||'')}</span></div>
+        <p>${esc(t.core_content||'')}</p>
+        <p class="cb-rationale">应用：${esc(t.application||'')}</p>
+      </div>`;
+    });
+  }
+
+  return h + '</div>';
+}
+
+// ── E3 ───────────────────────────────────────────────────────────
+function renderE3(e3) {
+  const args = e3.arguments||[];
+  let h = `<div class="cb-section"><div class="cb-section-header">E3 · 论点穷举 <span class="cb-count">${args.length} 条</span></div>
+  <table class="cb-table">
+    <tr><th style="width:50px">#</th><th>因为</th><th>所以</th><th style="width:55px">方向</th></tr>`;
+
+  args.forEach((a,i) => {
+    const isOpp = a.stance==='opponent';
+    h += `<tr>
+      <td><span class="cb-arg-id">${esc(a.id||String(i+1))}</span></td>
+      <td>${esc(a.because||'')}</td>
+      <td>${esc(a.so||'')}</td>
+      <td><span class="cb-stance ${isOpp?'opp':'our'}">${isOpp?'对方':'我方'}</span></td>
+    </tr>`;
+    if (a.elaboration) {
+      h += `<tr class="cb-elab-row"><td></td><td colspan="3">${esc(a.elaboration)}</td></tr>`;
+    }
+  });
+
+  return h + '</table></div>';
+}
+
+// ── E4 ───────────────────────────────────────────────────────────
+function renderE4(e4) {
+  let h = '<div class="cb-section"><div class="cb-section-header">E4 · 论证架构</div>';
+
+  // Definitions
+  if (e4.definitions?.length) {
+    h += '<div class="cb-sub">定义 / 讨论范围</div>';
+    e4.definitions.forEach(def => {
+      h += `<div class="cb-def-block">
+        <div class="cb-def-kw">「${esc(def.keyword||'')}」</div>
+        ${row('固有定义域', def.layer1_boundary)}
+        ${row('讨论范围', def.layer2_focus)}
+        ${row('定义陈述', def.definition_statement)}
+        ${row('合理性', def.rationale)}
+      </div>`;
+    });
+  }
+
+  // B0
+  if (e4.b0) {
+    h += `<div class="cb-sub">标准 B0</div>
+    <div class="cb-b0-block">
+      <div class="cb-b0-label">持方成立最根本理由</div>
+      <div class="cb-b0-stmt">${esc(e4.b0.statement||'')}</div>
+      <div class="cb-b0-why">${esc(e4.b0.why_this_standard||'')}</div>`;
+    if (e4.b0.supporting_reasoning?.length) {
+      h += '<ul style="margin-top:8px;padding-left:16px">';
+      e4.b0.supporting_reasoning.forEach(r => {
+        h += `<li style="font-size:12px;color:var(--text-dim);margin-bottom:3px">${esc(r.argument||'')}${r.evidence?' <span style="color:var(--gray)">· '+esc(r.evidence)+'</span>':''}</li>`;
+      });
+      h += '</ul>';
+    }
+    h += '</div>';
+  }
+
+  // Sub-points
+  if (e4.sub_points?.length) {
+    h += '<div class="cb-sub">分论点</div>';
+    e4.sub_points.forEach((sp,i) => {
+      h += `<div class="cb-sp-block">
+        <div class="cb-sp-header">
+          <span class="cb-sp-id">${esc(sp.id||'SP'+(i+1))}</span>
+          <span class="cb-sp-claim">${esc(sp.claim||'')}</span>
+        </div>
+        ${sp.supports_b0_via ? `<div class="cb-sp-b0link">→ B0：${esc(sp.supports_b0_via)}</div>`:''}
+        <ul class="cb-sp-args">`;
+      (sp.reasoning||[]).forEach(r => {
+        h += `<li>${esc(r.argument||'')}${r.evidence?`<div class="ev">证据：${esc(r.evidence)}</div>`:''}</li>`;
+      });
+      h += '</ul></div>';
+    });
+  }
+
+  // Session tasks
+  if (e4.session_tasks?.length) {
+    h += '<div class="cb-sub">环节任务分配</div><table class="cb-table"><tr><th>辩位</th><th>环节</th><th>任务</th><th style="width:70px">时长</th></tr>';
+    e4.session_tasks.forEach(t => {
+      h += `<tr><td>${esc(t.role||'')}</td><td>${esc(t.segment||'')}</td><td>${esc(t.task||'')}</td><td>${esc(t.duration||'')}</td></tr>`;
+    });
+    h += '</table>';
+  }
+
+  return h + '</div>';
+}
+
+function row(label, val) {
+  if (!val) return '';
+  return `<div class="cb-def-row"><span class="cb-def-label">${label}</span><span class="cb-def-val">${esc(val)}</span></div>`;
+}
+
+// ── E5 ───────────────────────────────────────────────────────────
+function renderE5(e5) {
+  let h = '<div class="cb-section"><div class="cb-section-header">E5 · 我方防守</div>';
+  const all = [
+    { label:'定义防守', items: e5.definition_defense },
+    { label:'讨论范围防守', items: e5.scope_defense },
+    { label:'标准 B0 防守', items: e5.b0_defense },
+  ];
+  all.forEach(({ label, items }) => {
+    if (!items?.length) return;
+    h += `<div class="cb-sub">${label}</div>`;
+    items.forEach(d => {
+      const strat = d.response_strategy||'';
+      const stratLabel = {consume:'消化',reverse:'反转',block:'拆除'}[strat]||strat;
+      h += `<div class="cb-defense-block">
+        <div class="cb-defense-head">
+          ${d.attack_type ? `<span class="cb-atk-type">${esc(d.attack_type)}</span>`:''}
+          ${d.attack_path ? `<span class="cb-atk-path">${esc(d.attack_path)}</span>`:''}
+          ${stratLabel ? `<span class="cb-resp-strategy ${strat}">${stratLabel}</span>`:''}
+        </div>
+        <div class="cb-defense-body">
+          <div class="cb-def-q"><span class="label">对方：</span>${esc(d.likely_attack||'')}</div>
+          ${d.likely_evidence ? `<div class="cb-def-q"><span class="label">论据：</span>${esc(d.likely_evidence)}</div>`:''}
+          <div class="cb-def-q" style="color:var(--green)"><span class="label">我方：</span>${esc(d.our_response||'')}</div>
+          ${d.our_evidence ? `<div class="cb-def-q"><span class="label">证据：</span>${esc(d.our_evidence)}</div>`:''}
+        </div>
+      </div>`;
+    });
+  });
+
+  // Subpoint defenses
+  if (e5.subpoint_defenses?.length) {
+    h += '<div class="cb-sub">分论点防守</div>';
+    e5.subpoint_defenses.forEach(sp => {
+      h += `<div style="margin-bottom:12px"><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px">${esc(sp.subpoint_id||'')}：${esc(sp.subpoint_claim||'')}</div>`;
+      (sp.paths||[]).forEach(p => {
+        h += `<div class="cb-defense-block">
+          <div class="cb-defense-head">
+            <span class="cb-atk-path">${esc(p.attack_path||'')}</span>
+          </div>
+          <div class="cb-defense-body">
+            <div class="cb-def-q"><span class="label">对方：</span>${esc(p.likely_attack||'')}</div>
+            ${p.likely_evidence ? `<div class="cb-def-q"><span class="label">论据：</span>${esc(p.likely_evidence)}</div>`:''}
+            <div class="cb-def-q" style="color:var(--green)"><span class="label">我方：</span>${esc(p.our_response||'')}</div>
+          </div>
+        </div>`;
+      });
+      h += '</div>';
+    });
+  }
+
+  return h + '</div>';
+}
+
+// ── E6 ───────────────────────────────────────────────────────────
+function renderE6(e6) {
+  const opps = e6.opponent_arguments||[];
+  let h = `<div class="cb-section"><div class="cb-section-header">E6 · 我方攻击 <span class="cb-count">${opps.length} 个对方论点</span></div>`;
+
+  opps.forEach((opp,i) => {
+    h += `<div class="cb-opp-block">
+      <div class="cb-opp-head">
+        <div class="cb-opp-chain"><b>对方论点 ${i+1}：</b>${esc(opp.full_chain||'')}</div>
+        ${opp.likely_evidence ? `<div class="cb-opp-ev">对方证据：${esc(opp.likely_evidence)}</div>`:''}
+      </div>`;
+
+    const attacks = [
+      { key:'attack_factual',  label:'A→B 事实层', cls:'factual' },
+      { key:'attack_logical',  label:'B→C 逻辑层', cls:'logical' },
+      { key:'attack_value',    label:'B 不重要',   cls:'value'   },
+    ];
+    attacks.forEach(({ key, label, cls }) => {
+      const a = opp[key];
+      if (!a) return;
+      h += `<div class="cb-atk-row">
+        <span class="cb-atk-type-badge ${cls}">${label}</span>
+        <div class="cb-atk-content">
+          <p>${esc(a.content||'')}</p>
+          ${a.evidence ? `<p style="font-size:11px;color:var(--gray)">证据：${esc(a.evidence)}</p>`:''}
+          ${a.core_arg ? `<p class="cb-atk-core">→ ${esc(a.core_arg)}</p>`:''}
+        </div>
+      </div>`;
+    });
+    h += '</div>';
+  });
+
+  return h + '</div>';
+}
+
+// ── E7 ───────────────────────────────────────────────────────────
+function renderE7(e7) {
+  const bfs = e7.battlefields||[];
+  let h = `<div class="cb-section"><div class="cb-section-header">E7 · 自由辩套题 <span class="cb-count">${bfs.length} 个战场</span></div>`;
+
+  bfs.forEach(bf => {
+    h += `<div class="cb-bf-block">
+      <div class="cb-bf-name">⚔ ${esc(bf.name||'战场')}</div>
+      <div class="cb-bf-steps">
+        ${bfStep('问', 'q', bf.question, bf.predicted_response)}
+        ${bfStep('追1', 'ch', bf.chase1, bf.chase1_predicted)}
+        ${bfStep('追2', 'ch', bf.chase2, bf.chase2_predicted)}
+        ${bfStep('归', 'ret', bf.return, null)}
+        ${bfStep('转', 'tr', bf.transition, null)}
+      </div>
+    </div>`;
+  });
+
+  return h + '</div>';
+}
+
+function bfStep(label, cls, main, pred) {
+  if (!main) return '';
+  return `<div class="cb-bf-step">
+    <div class="cb-step-label ${cls}">${label}</div>
+    <div class="cb-step-content">
+      <div class="cb-step-main">${esc(main)}</div>
+      ${pred ? `<div class="cb-step-pred">预判回应：${esc(pred)}</div>`:''}
+    </div>
+  </div>`;
+}
+</script>
+</body>
+</html>
