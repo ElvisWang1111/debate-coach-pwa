@@ -9,7 +9,69 @@ const ENCRYPTED_API_KEY_STORAGE_KEY = "debate-coach-pwa.encrypted-api-key.v1";
 const IOS_INSTALL_HINT_DISMISSED_KEY = "debate-coach-pwa.ios-install-hint-dismissed.v1";
 const LEGACY_STORAGE_KEYS = ["debate-coach-pwa.state.v1"];
 const PROMPT_URL = "./content/SKILL.md";
+const CASE_WRITER_PROMPT_URL = "./case-writing-skill/SKILL.md";
 const PRIVACY_URL = "./content/PrivacyPolicy.md";
+
+const UNIVERSE_CASE_SCHEMA_PROMPT = `## 批量辩案生成模式
+
+你现在处于自动批量生成模式。不需要等待用户输入，不需要逐步引导，不需要确认。
+直接基于《辩论筑基》知识体系，一次性生成一份完整的标准化辩案。
+
+输出格式：结构化 Markdown。严格按以下章节顺序和标题输出，不得省略任何章节。
+
+## E1 · 资料搜集
+
+### 关键词解释
+针对辩题关键词（2-3个），每个关键词给出多视角解释及对本辩题的意义。
+
+### 参考案例
+2-3个与辩题高度相关的案例，注明案例名、简述、与辩题关联、信息认知依据。
+
+### 相关理论与学者
+1-2个相关理论或学者观点，注明名称/来源、核心内容、在本辩题的应用方式。
+
+## E3 · 论点穷举
+
+用表格列出 10-12 条论点。我方不少于 8 条，对方不少于 2 条。
+
+| 编号 | 因为（理由） | 所以（结论） | 立场 |
+|------|------------|------------|------|
+
+## E4 · 论证架构
+
+### 关键词定义
+每个关键词：固有定义域 → 我方讨论范围 → 完整定义陈述句。
+
+### B0 核心标准
+完整标准陈述句，说明凭什么用此标准，并给出2条支撑论证。
+
+### 分论点
+2个分论点，每个包含分论点陈述句、回扣B0的逻辑路径、2条具体论证。
+
+### 赛制分工
+表格：辩位 | 环节 | 任务 | 预计时长
+
+## E5 · 我方防守
+
+定义防守、讨论范围防守、B0标准防守、分论点防守。每条都写成可在赛场直接说的回应。
+
+## E6 · 我方攻击
+
+3个预判对方论点，每个包含：对方完整A→B→C逻辑链、事实层攻击、逻辑层攻击、价值层攻击。
+
+## E7 · 自由辩套题
+
+2-3个战场，每个战场包含：问、追1、追2、归、转。`;
+
+const UNIVERSE_AGGREGATION_PROMPT = `你是一个辩论辩案聚合专家。
+你的任务是把多个AI辩手独立生成的完整辩案合并成一份“高概率社会共识辩案”。
+
+聚合规则：
+1. 识别内容相同或高度相似的论点、定义、攻防路径，并统计出现频率。
+2. 相似内容合并为一条，并标注 [高频: X/N]、[中频: X/N] 或 [低频: X/N]。
+3. 高频内容作为主框架，低频但有价值的内容放入“补充/备选”。
+4. 不要机械拼接，必须消除重复、补齐逻辑链、统一术语。
+5. 输出一份完整 Markdown 辩案，包含 E1、E3、E4、E5、E6、E7。`;
 
 const STRINGS = {
   zh: {
@@ -27,7 +89,44 @@ const STRINGS = {
     later: "稍后再说",
     chat: "对话",
     history: "记录",
+    extensions: "拓展",
     settings: "设置",
+    extensionsTitle: "拓展",
+    extensionsCopy: "把更重的辩论工具放在这里，需要时再打开。",
+    argumentUniverse: "论点宇宙",
+    argumentUniverseCopy: "并行采样多条模型辩案，再聚合成一份共识辩案。",
+    open: "打开",
+    motion: "辩题",
+    stance: "持方",
+    format: "赛制",
+    branches: "分支数量",
+    parallel: "并发数",
+    startUniverse: "开始生成",
+    restartUniverse: "重新生成",
+    stopUniverse: "停止采样",
+    saveUniverseToHistory: "放到记录中",
+    universeSavedToHistory: "已放到历史记录",
+    universeRunning: "采样中",
+    universeAggregating: "聚合中",
+    universeComplete: "已完成",
+    universeIdle: "未启动",
+    universeStopped: "已停止",
+    universeProgress: "分支进度",
+    universeMonitor: "模型实施进程",
+    universeResult: "聚合辩案",
+    universeNoResult: "完成后会在这里看到合并后的辩案。",
+    universeBranchDetail: "分支详情",
+    formatted: "格式化",
+    raw: "原文",
+    close: "关闭",
+    expand: "展开",
+    collapse: "收起",
+    pending: "等待中",
+    running: "生成中",
+    complete: "完成",
+    stopped: "已停止",
+    error: "错误",
+    engineUnavailable: "论点宇宙生成失败，请检查模型配置、API Key 或并发数。",
     noSession: "创建一个新会话开始旅程。",
     welcomeTitle: "开始一场新的辩论旅程",
     welcomeCopy: "输入辩题，拆解、立论、攻防与复盘。",
@@ -112,7 +211,44 @@ const STRINGS = {
     later: "Not Now",
     chat: "Chat",
     history: "History",
+    extensions: "Extensions",
     settings: "Settings",
+    extensionsTitle: "Extensions",
+    extensionsCopy: "Heavier debate tools live here and open only when needed.",
+    argumentUniverse: "Argument Universe",
+    argumentUniverseCopy: "Sample many model casebooks in parallel, then merge them into one consensus case.",
+    open: "Open",
+    motion: "Motion",
+    stance: "Side",
+    format: "Format",
+    branches: "Branches",
+    parallel: "Parallel",
+    startUniverse: "Start",
+    restartUniverse: "Regenerate",
+    stopUniverse: "Stop",
+    saveUniverseToHistory: "Save to History",
+    universeSavedToHistory: "Saved to history",
+    universeRunning: "Sampling",
+    universeAggregating: "Aggregating",
+    universeComplete: "Complete",
+    universeIdle: "Idle",
+    universeStopped: "Stopped",
+    universeProgress: "Branch Progress",
+    universeMonitor: "Model Runs",
+    universeResult: "Merged Case",
+    universeNoResult: "The merged case will appear here when generation completes.",
+    universeBranchDetail: "Branch Detail",
+    formatted: "Formatted",
+    raw: "Raw",
+    close: "Close",
+    expand: "Expand",
+    collapse: "Collapse",
+    pending: "Pending",
+    running: "Running",
+    complete: "Complete",
+    stopped: "Stopped",
+    error: "Error",
+    engineUnavailable: "Argument Universe failed. Check model settings, API key, or concurrency.",
     noSession: "Create a new session to begin.",
     welcomeTitle: "Start a new debate session",
     welcomeCopy: "Enter a motion and the coach will help you build, test, and refine your case.",
@@ -188,6 +324,7 @@ const STRINGS = {
 
 const DEFAULT_STATE = {
   tab: "chat",
+  extensionView: "list",
   menuOpen: false,
   notice: "",
   modal: null,
@@ -297,6 +434,9 @@ function suggestedTitle(language, text) {
 }
 
 function sessionPreview(language, session) {
+  if (session.kind === "argument-universe" && session.universeSnapshot) {
+    return session.universeSnapshot.resultMarkdown || session.universeSnapshot.compileBuffer || tFor(language, "argumentUniverseCopy");
+  }
   const last = session.messages[session.messages.length - 1];
   return last ? last.content : tFor(language, "noMessages");
 }
@@ -544,11 +684,63 @@ function MarkdownContent({ text, className = "bubble-text markdown-body" }) {
   return html`<div className=${className} dangerouslySetInnerHTML=${{ __html: renderMarkdown(text) }}></div>`;
 }
 
+function createUniverseBranch(id) {
+  return {
+    id,
+    status: "pending",
+    text: "",
+    result: null,
+    wordCount: 0,
+    error: "",
+  };
+}
+
+function createUniverseBranches(count) {
+  return Object.fromEntries(
+    Array.from({ length: count }, (_, index) => {
+      const id = String(index + 1).padStart(3, "0");
+      return [id, createUniverseBranch(id)];
+    })
+  );
+}
+
+function universePhaseLabel(language, status) {
+  const labels = {
+    zh: {
+      created: "未启动",
+      sampling: "采样中",
+      aggregating: "聚合中",
+      complete: "已完成",
+      error: "错误",
+      idle: "未启动",
+      stopped: "已停止",
+    },
+    en: {
+      created: "Idle",
+      sampling: "Sampling",
+      aggregating: "Aggregating",
+      complete: "Complete",
+      error: "Error",
+      idle: "Idle",
+      stopped: "Stopped",
+    },
+  };
+  return labels[language]?.[status] || labels.zh[status] || status;
+}
+
+function universeStatusLabel(language, status) {
+  const labels = {
+    zh: { pending: "等待中", running: "生成中", complete: "完成", stopped: "已停止", error: "错误" },
+    en: { pending: "Pending", running: "Running", complete: "Complete", stopped: "Stopped", error: "Error" },
+  };
+  return labels[language]?.[status] || labels.zh[status] || status;
+}
+
 function UserTextContent({ text }) {
   return html`<span className="bubble-user-text">${String(text || "")}</span>`;
 }
 
-function HistorySessionCard({ item, preview, onOpen, onDelete, isOpen, setOpenId, deleteLabel }) {
+function HistorySessionCard({ item, preview, onOpen, onDelete, isOpen, setOpenId, deleteLabel, typeLabel }) {
   const touchStartXRef = useRef(0);
   const touchDeltaXRef = useRef(0);
 
@@ -590,9 +782,77 @@ function HistorySessionCard({ item, preview, onOpen, onDelete, isOpen, setOpenId
         onTouchMove=${handleTouchMove}
         onTouchEnd=${handleTouchEnd}
       >
-        <div className="session-title">${item.title}</div>
-        <div className="session-meta">${formatTimestamp(item.updatedAt)}</div>
+        <div className="history-card-head">
+          <div>
+            <div className="session-title">${item.title}</div>
+            <div className="session-meta">${formatTimestamp(item.updatedAt)}</div>
+          </div>
+          ${typeLabel ? html`<span className="history-type-pill">${typeLabel}</span>` : null}
+        </div>
         <${MarkdownContent} text=${preview} className="session-preview markdown-body session-preview-markdown" />
+      </button>
+    </article>
+  `;
+}
+
+function HistoryUniverseCard({
+  item,
+  preview,
+  onOpen,
+  onDelete,
+  isOpen,
+  setOpenId,
+  deleteLabel,
+  t,
+}) {
+  const touchStartXRef = useRef(0);
+  const touchDeltaXRef = useRef(0);
+  function handleTouchStart(event) {
+    touchStartXRef.current = event.touches[0]?.clientX || 0;
+    touchDeltaXRef.current = 0;
+  }
+
+  function handleTouchMove(event) {
+    const currentX = event.touches[0]?.clientX || 0;
+    touchDeltaXRef.current = currentX - touchStartXRef.current;
+  }
+
+  function handleTouchEnd() {
+    if (touchDeltaXRef.current <= -36) {
+      setOpenId(item.id);
+    } else if (touchDeltaXRef.current >= 24) {
+      setOpenId("");
+    }
+    touchStartXRef.current = 0;
+    touchDeltaXRef.current = 0;
+  }
+
+  function handleCardClick() {
+    if (isOpen) {
+      setOpenId("");
+      return;
+    }
+    onOpen();
+  }
+
+  return html`
+    <article className=${`swipe-card ${isOpen ? "open" : ""}`}>
+      <button className="swipe-delete-btn" onClick=${onDelete}>${deleteLabel}</button>
+      <button
+        className="session-card history-universe-card"
+        onClick=${handleCardClick}
+        onTouchStart=${handleTouchStart}
+        onTouchMove=${handleTouchMove}
+        onTouchEnd=${handleTouchEnd}
+      >
+        <div className="history-universe-head">
+          <div>
+            <div className="session-title">${item.title}</div>
+            <div className="session-meta">${formatTimestamp(item.updatedAt)}</div>
+          </div>
+          <span className="history-type-pill">${t("argumentUniverse")}</span>
+        </div>
+        <${MarkdownContent} text=${preview} className="session-preview markdown-body session-preview-markdown history-universe-summary" />
       </button>
     </article>
   `;
@@ -1225,12 +1485,12 @@ function loadStoredState() {
   }
 }
 
-async function streamChat({ baseURL, apiKey, model, prompt, conversation, onChunk, signal }) {
+async function streamChat({ baseURL, apiKey, model, prompt, conversation, onChunk, signal, maxTokens = 4096, temperature = 0.7 }) {
   const body = {
     model: model || "deepseek-v4-pro",
     messages: [{ role: "system", content: prompt }, ...conversation],
-    temperature: 0.7,
-    max_tokens: 4096,
+    temperature,
+    max_tokens: maxTokens,
     stream: true,
   };
 
@@ -1341,6 +1601,17 @@ function TabIcon({ tab }) {
           stroke-width="2.2"
           stroke-linecap="round"
           stroke-linejoin="round"
+        />
+      </svg>
+    `;
+  }
+
+  if (tab === "extensions") {
+    return html`
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+        <path
+          d="M7.2 3.8h3.2v3.4H7.2V3.8Zm6.4 0h3.2v3.4h-3.2V3.8ZM4.8 10.3h3.4v3.4H4.8v-3.4Zm5.9 0h2.6v3.4h-2.6v-3.4Zm5.1 0h3.4v3.4h-3.4v-3.4ZM7.2 16.8h3.2v3.4H7.2v-3.4Zm6.4 0h3.2v3.4h-3.2v-3.4Z"
+          fill="currentColor"
         />
       </svg>
     `;
@@ -1461,12 +1732,35 @@ function App() {
   const [openHistorySwipeId, setOpenHistorySwipeId] = useState("");
   const [isClosingRecycleBin, setIsClosingRecycleBin] = useState(false);
   const [showIosInstallHint, setShowIosInstallHint] = useState(false);
+  const [historyUniverseOpenBySession, setHistoryUniverseOpenBySession] = useState({});
+  const [activeHistoryUniverseId, setActiveHistoryUniverseId] = useState("");
+  const [historyUniverseDetail, setHistoryUniverseDetail] = useState({ sessionId: "", branchId: "", tab: "formatted" });
+  const [universe, setUniverse] = useState({
+    motion: "",
+    stance: "正方",
+    format: "标准传辩",
+    nBranches: 10,
+    parallel: 5,
+    jobId: "",
+    status: "idle",
+    branches: {},
+    monitorOpen: false,
+    resultOpen: false,
+    aggLog: "",
+    compileBuffer: "",
+    resultMarkdown: "",
+    error: "",
+  });
+  const [universeDetail, setUniverseDetail] = useState({ branchId: "", tab: "formatted" });
   const stateRef = useRef(state);
+  const universeRef = useRef(universe);
   const promptCacheRef = useRef("");
+  const caseWriterPromptCacheRef = useRef("");
   const privacyCacheRef = useRef("");
   const bannerTimerRef = useRef(0);
   const modalCloseTimerRef = useRef(0);
   const abortControllerRef = useRef(null);
+  const universeAbortControllerRef = useRef(null);
   const composerRef = useRef(null);
   const importInputRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -1475,6 +1769,7 @@ function App() {
   const scrollPositionsRef = useRef({ chat: {}, history: 0, settings: 0 });
 
   stateRef.current = state;
+  universeRef.current = universe;
 
   const t = (key) => tFor(state.settings.language, key);
   const session = currentSession(state);
@@ -1656,10 +1951,302 @@ function App() {
   useEffect(() => {
     return () => {
       abortControllerRef.current?.abort();
+      universeAbortControllerRef.current?.abort();
       window.clearTimeout(bannerTimerRef.current);
       window.clearTimeout(modalCloseTimerRef.current);
     };
   }, []);
+
+  function updateUniverseBranch(branchId, updater) {
+    setUniverse((prev) => {
+      const branch = prev.branches[branchId] || createUniverseBranch(branchId);
+      return {
+        ...prev,
+        branches: {
+          ...prev.branches,
+          [branchId]: updater(branch),
+        },
+      };
+    });
+  }
+
+  function stopUniverseJob() {
+    const stoppedLabel = tFor(stateRef.current.settings.language, "stopped");
+    universeAbortControllerRef.current?.abort();
+    universeAbortControllerRef.current = null;
+    setUniverse((prev) => ({
+      ...prev,
+      status: "stopped",
+      branches: Object.fromEntries(
+        Object.entries(prev.branches).map(([branchId, branch]) => [
+          branchId,
+          branch.status === "complete"
+            ? branch
+            : {
+                ...branch,
+                status: "stopped",
+                error: branch.text ? "" : stoppedLabel,
+              },
+        ])
+      ),
+    }));
+    showBanner(tFor(stateRef.current.settings.language, "universeStopped"));
+  }
+
+  function buildUniverseHistoryMarkdown(snapshot) {
+    const branches = Object.values(snapshot.branches || {});
+    const statusLabel = universePhaseLabel(stateRef.current.settings.language, snapshot.status);
+    const branchLines = branches
+      .map((branch) => {
+        const label = universeStatusLabel(stateRef.current.settings.language, branch.status);
+        const content = branch.text || branch.error || "（暂无内容）";
+        return `### 分支 #${branch.id} · ${label}${branch.wordCount ? ` · ${branch.wordCount} 字` : ""}\n\n${content}`;
+      })
+      .join("\n\n---\n\n");
+
+    return `# ${tFor(stateRef.current.settings.language, "argumentUniverse")} · ${snapshot.motion || "Untitled"}
+
+- 持方：${snapshot.stance}
+- 赛制：${snapshot.format}
+- 状态：${statusLabel}
+- 分支数量：${branches.length || snapshot.nBranches}
+- 并发数：${snapshot.parallel}
+- 生成时间：${new Date().toLocaleString()}
+
+## 模型实施进程
+
+${branchLines || "（暂无分支记录）"}
+
+## 聚合辩案
+
+${snapshot.resultMarkdown || snapshot.compileBuffer || "（暂无聚合辩案）"}`;
+  }
+
+  function saveUniverseToHistory() {
+    const snapshot = universeRef.current;
+    const content = buildUniverseHistoryMarkdown(snapshot);
+    const titleBase = snapshot.motion?.trim() || tFor(stateRef.current.settings.language, "argumentUniverse");
+    const savedSession = createSessionObject(`${tFor(stateRef.current.settings.language, "argumentUniverse")} · ${suggestedTitle(stateRef.current.settings.language, titleBase)}`);
+    savedSession.kind = "argument-universe";
+    savedSession.universeSnapshot = {
+      ...snapshot,
+      branches: Object.fromEntries(
+        Object.entries(snapshot.branches || {}).map(([branchId, branch]) => [
+          branchId,
+          { ...branch },
+        ])
+      ),
+      savedAt: new Date().toISOString(),
+    };
+    savedSession.messages = [
+      {
+        id: generateId(),
+        role: "user",
+        content: `论点宇宙采样：${titleBase}\n持方：${snapshot.stance}\n赛制：${snapshot.format}`,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: generateId(),
+        role: "assistant",
+        content,
+        createdAt: new Date(Date.now() + 1).toISOString(),
+      },
+    ];
+    savedSession.updatedAt = new Date().toISOString();
+
+    setState((prev) => ({
+      ...prev,
+      tab: "history",
+      extensionView: "list",
+      sessions: [savedSession, ...prev.sessions],
+    }));
+    setHistoryUniverseOpenBySession((prev) => ({
+      ...prev,
+      [savedSession.id]: { monitorOpen: false, resultOpen: false },
+    }));
+    setActiveHistoryUniverseId(savedSession.id);
+    showBanner(tFor(stateRef.current.settings.language, "universeSavedToHistory"));
+  }
+
+  async function startUniverseJob() {
+    const current = stateRef.current;
+    const motion = universeRef.current.motion.trim();
+    if (!motion) {
+      openModal({ type: "content", title: tFor(current.settings.language, "notice"), content: tFor(current.settings.language, "placeholder") });
+      return;
+    }
+    if (!current.settings.apiKey.trim()) {
+      openModal({ type: "content", title: tFor(current.settings.language, "notice"), content: tFor(current.settings.language, "missingKey") });
+      return;
+    }
+
+    const branchCount = Math.max(1, Math.min(50, Number(universeRef.current.nBranches) || 10));
+    const parallel = Math.max(1, Math.min(10, Number(universeRef.current.parallel) || 5));
+    const controller = new AbortController();
+    universeAbortControllerRef.current?.abort();
+    universeAbortControllerRef.current = controller;
+    const jobId = generateId().slice(0, 8);
+    setUniverse((prev) => ({
+      ...prev,
+      nBranches: branchCount,
+      parallel,
+      jobId,
+      status: "sampling",
+      branches: createUniverseBranches(branchCount),
+      monitorOpen: false,
+      resultOpen: false,
+      aggLog: "",
+      compileBuffer: "",
+      resultMarkdown: "",
+      error: "",
+    }));
+
+    try {
+      const systemBase = [await loadPrompt(), await loadCaseWriterPrompt(), UNIVERSE_CASE_SCHEMA_PROMPT]
+        .filter(Boolean)
+        .join("\n\n---\n\n");
+      const ids = Array.from({ length: branchCount }, (_, index) => String(index + 1).padStart(3, "0"));
+      const completedBranches = [];
+      let cursor = 0;
+
+      async function runOne(branchId) {
+        updateUniverseBranch(branchId, (branch) => ({ ...branch, status: "running", text: "", error: "" }));
+        const prompt = `辩题：${motion}
+持方：${universeRef.current.stance}
+赛制：${universeRef.current.format}
+采样分支：${branchId}/${String(branchCount).padStart(3, "0")}
+
+请生成一份完整标准化辩案。这个分支要独立思考，允许选择与其他分支不同的定义、B0、分论点和攻防路径；但必须严格保留 ## E1、## E3、## E4、## E5、## E6、## E7 六个章节。直接输出 Markdown。`;
+        const text = await streamChat({
+          baseURL: current.settings.baseURL.trim(),
+          apiKey: current.settings.apiKey.trim(),
+          model: current.settings.model.trim(),
+          prompt: systemBase,
+          conversation: [{ role: "user", content: prompt }],
+          signal: controller.signal,
+          maxTokens: 8192,
+          temperature: 0.85,
+          onChunk(chunk) {
+            updateUniverseBranch(branchId, (branch) => ({ ...branch, text: `${branch.text}${chunk}` }));
+          },
+        });
+        updateUniverseBranch(branchId, (branch) => ({
+          ...branch,
+          status: "complete",
+          text,
+          wordCount: text.length,
+        }));
+        completedBranches.push({ id: branchId, text });
+      }
+
+      async function worker() {
+        while (cursor < ids.length) {
+          const branchId = ids[cursor];
+          cursor += 1;
+          try {
+            await runOne(branchId);
+          } catch (error) {
+            if (error?.name === "AbortError") {
+              throw error;
+            }
+            updateUniverseBranch(branchId, (branch) => ({
+              ...branch,
+              status: "error",
+              error: String(error.message || error),
+            }));
+          }
+        }
+      }
+
+      await Promise.all(Array.from({ length: Math.min(parallel, branchCount) }, () => worker()));
+      if (controller.signal.aborted) {
+        const abortError = new Error("Stopped");
+        abortError.name = "AbortError";
+        throw abortError;
+      }
+      if (!completedBranches.length) {
+        throw new Error("所有分支都生成失败，请检查模型配置。");
+      }
+      await aggregateUniverseBranches({ motion, branches: completedBranches, signal: controller.signal });
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        setUniverse((prev) => ({
+          ...prev,
+          status: "stopped",
+          branches: Object.fromEntries(
+            Object.entries(prev.branches).map(([branchId, branch]) => [
+              branchId,
+              branch.status === "complete" ? branch : { ...branch, status: "stopped" },
+            ])
+          ),
+        }));
+      } else {
+        setUniverse((prev) => ({ ...prev, status: "error", error: String(error.message || error) }));
+        openModal({ type: "content", title: tFor(current.settings.language, "notice"), content: String(error.message || error) });
+      }
+    } finally {
+      if (universeAbortControllerRef.current === controller) {
+        universeAbortControllerRef.current = null;
+      }
+    }
+  }
+
+  async function aggregateUniverseBranches({ motion, branches, signal }) {
+    const current = stateRef.current;
+    setUniverse((prev) => ({
+      ...prev,
+      status: "aggregating",
+      aggLog: `采样完成：${branches.length}/${prev.nBranches}\n正在合并共识辩案...\n\n`,
+      compileBuffer: "",
+      resultMarkdown: "",
+    }));
+
+    const branchPayload = branches
+      .map((branch) => {
+        const clipped = branch.text.length > 7000 ? `${branch.text.slice(0, 7000)}\n\n[分支内容过长，已截断]` : branch.text;
+        return `### Branch ${branch.id}\n\n${clipped}`;
+      })
+      .join("\n\n---\n\n");
+
+    const userPrompt = `辩题：${motion}
+持方：${universeRef.current.stance}
+赛制：${universeRef.current.format}
+总分支数：${universeRef.current.nBranches}
+有效分支数：${branches.length}
+
+以下是各分支独立生成的辩案：
+
+${branchPayload}
+
+请按系统要求合并为一份完整辩案。`;
+
+    const result = await streamChat({
+      baseURL: current.settings.baseURL.trim(),
+      apiKey: current.settings.apiKey.trim(),
+      model: current.settings.model.trim(),
+      prompt: UNIVERSE_AGGREGATION_PROMPT,
+      conversation: [{ role: "user", content: userPrompt }],
+      signal,
+      maxTokens: 8192,
+      temperature: 0.35,
+      onChunk(chunk) {
+        setUniverse((prev) => ({
+          ...prev,
+          compileBuffer: `${prev.compileBuffer}${chunk}`,
+          aggLog: `${prev.aggLog}${chunk}`,
+        }));
+      },
+    });
+
+    setUniverse((prev) => ({
+      ...prev,
+      status: "complete",
+      resultMarkdown: result,
+      compileBuffer: result,
+      resultOpen: true,
+    }));
+    showBanner(tFor(stateRef.current.settings.language, "universeComplete"));
+  }
 
   async function loadPrompt() {
     if (promptCacheRef.current) {
@@ -1685,6 +2272,19 @@ function App() {
       privacyCacheRef.current = "Privacy policy is unavailable in this build.";
     }
     return privacyCacheRef.current;
+  }
+
+  async function loadCaseWriterPrompt() {
+    if (caseWriterPromptCacheRef.current) {
+      return caseWriterPromptCacheRef.current;
+    }
+    try {
+      const response = await fetch(CASE_WRITER_PROMPT_URL);
+      caseWriterPromptCacheRef.current = await response.text();
+    } catch (error) {
+      caseWriterPromptCacheRef.current = "";
+    }
+    return caseWriterPromptCacheRef.current;
   }
 
   function openModal(modal) {
@@ -2110,6 +2710,29 @@ function App() {
 
   const language = state.settings.language;
   const historyItems = activeSessions(state).filter((item) => item.messages.length);
+  const universeBranches = Object.values(universe.branches);
+  const universeDone = universeBranches.filter((branch) => branch.status === "complete").length;
+  const universeErrored = universeBranches.filter((branch) => branch.status === "error").length;
+  const universeProgress = universeBranches.length ? Math.round((universeDone / universeBranches.length) * 100) : 0;
+  const selectedUniverseBranch = universeDetail.branchId ? universe.branches[universeDetail.branchId] : null;
+  const universeIsBusy = universe.status === "sampling" || universe.status === "aggregating";
+  const universeHasRun = universe.status !== "idle" || Boolean(universe.jobId || universe.resultMarkdown || universe.compileBuffer);
+  const activeHistoryUniverseSession = activeHistoryUniverseId
+    ? state.sessions.find((item) => item.id === activeHistoryUniverseId && item.kind === "argument-universe" && item.universeSnapshot)
+    : null;
+  const activeHistoryUniverseSnapshot = activeHistoryUniverseSession?.universeSnapshot || null;
+  const activeHistoryUniverseOpenState = activeHistoryUniverseId
+    ? historyUniverseOpenBySession[activeHistoryUniverseId] || { monitorOpen: false, resultOpen: false }
+    : { monitorOpen: false, resultOpen: false };
+  const activeHistoryUniverseBranches = activeHistoryUniverseSnapshot ? Object.values(activeHistoryUniverseSnapshot.branches || {}) : [];
+  const activeHistoryUniverseDone = activeHistoryUniverseBranches.filter((branch) => branch.status === "complete").length;
+  const activeHistoryUniverseErrored = activeHistoryUniverseBranches.filter((branch) => branch.status === "error").length;
+  const activeHistoryUniverseProgress = activeHistoryUniverseBranches.length ? Math.round((activeHistoryUniverseDone / activeHistoryUniverseBranches.length) * 100) : 0;
+  const selectedHistoryUniverseSession = historyUniverseDetail.sessionId
+    ? state.sessions.find((item) => item.id === historyUniverseDetail.sessionId)
+    : null;
+  const selectedHistoryUniverseBranch =
+    selectedHistoryUniverseSession?.universeSnapshot?.branches?.[historyUniverseDetail.branchId] || null;
   const consentItems = t("consentItems");
   const consentIntro =
     language === "zh"
@@ -2193,7 +2816,7 @@ function App() {
               `
             : html`
                 <main className="screen">
-                  ${state.tab === "chat"
+	                  ${state.tab === "chat"
                     ? html`
                         <div className="nav-blur nav-blur-chat">
                           <div className="topbar topbar-chat">
@@ -2223,19 +2846,18 @@ function App() {
                             </button>
                           </div>
                         </div>
-                        <div className="screen-pad">
-                          <div className="messages">
-                            ${!session ? html`<div className="empty-card">${t("noSession")}</div>` : null}
-                            ${session && !session.messages.length && !state.streamingText
-                              ? html`
-                                  <section className="welcome-state welcome-state-minimal">
-                                    <div className="welcome-title">${t("welcomeTitle")}</div>
+	                        <div className="screen-pad">
+	                          <div className="messages">
+	                            ${session && !session.messages.length && !state.streamingText
+	                              ? html`
+	                                  <section className="welcome-state welcome-state-minimal">
+	                                    <div className="welcome-title">${t("welcomeTitle")}</div>
                                     <div className="welcome-copy">${t("welcomeCopy")}</div>
                                   </section>
                                 `
                               : null}
-                            ${session
-                              ? session.messages.map((message) => {
+	                            ${session
+	                              ? session.messages.map((message) => {
                                   const role = message.role;
                                   const showRegenerate =
                                     message.id === lastAssistantMessageId(session) ||
@@ -2288,30 +2910,366 @@ function App() {
                     : null}
                   ${state.tab === "history"
                     ? html`
-                        <section className="section-head section-head-large">
-                          <div className="section-title">${t("historyTitle")}</div>
-                        </section>
-                        <section className="stack">
-                          ${historyItems.length
-                            ? historyItems.map(
-                                (item) => html`
-                                  <${HistorySessionCard}
-                                    key=${item.id}
-                                    item=${item}
-                                    preview=${sessionPreview(language, item)}
-                                    isOpen=${openHistorySwipeId === item.id}
-                                    setOpenId=${setOpenHistorySwipeId}
-                                    deleteLabel=${t("delete")}
-                                    onOpen=${() => openSessionInChat(item.id)}
-                                    onDelete=${() => {
-                                      setOpenHistorySwipeId("");
-                                      moveToRecycleBin(item.id);
+                        ${activeHistoryUniverseSession
+                          ? html`
+                              <div className="nav-blur">
+                                <div className="topbar">
+                                  <button
+                                    className="circle-btn"
+                                    aria-label="Back"
+                                    onClick=${() => {
+                                      setActiveHistoryUniverseId("");
+                                      setHistoryUniverseDetail({ sessionId: "", branchId: "", tab: "formatted" });
                                     }}
-                                  />
-                                `
-                              )
-                            : html`<div className="empty-note empty-note-centered">${t("noHistory")}</div>`}
-                        </section>
+                                  >
+                                    <span className="universe-back-icon">‹</span>
+                                  </button>
+                                  <div className="topbar-title">${activeHistoryUniverseSession.title}</div>
+                                  <div className="circle-btn ghost-spacer"></div>
+                                </div>
+                              </div>
+                              <section className="stack history-universe-detail-page">
+                                <article className="settings-card history-universe-overview">
+                                  <div className="history-universe-head">
+                                    <div>
+                                      <div className="card-title">${t("argumentUniverse")}</div>
+                                      <div className="universe-subtitle">${activeHistoryUniverseSnapshot.motion || t("argumentUniverseCopy")}</div>
+                                    </div>
+                                    <span className="history-type-pill">${t("argumentUniverse")}</span>
+                                  </div>
+                                  <div className="history-universe-meta">
+                                    ${activeHistoryUniverseSnapshot.stance || ""}${activeHistoryUniverseSnapshot.format ? ` · ${activeHistoryUniverseSnapshot.format}` : ""}
+                                  </div>
+                                </article>
+                                <article className="settings-card universe-monitor universe-collapsible">
+                                  <button
+                                    className="universe-collapse-head"
+                                    onClick=${() =>
+                                      setHistoryUniverseOpenBySession((prev) => ({
+                                        ...prev,
+                                        [activeHistoryUniverseId]: {
+                                          ...activeHistoryUniverseOpenState,
+                                          monitorOpen: !activeHistoryUniverseOpenState.monitorOpen,
+                                        },
+                                      }))}
+                                  >
+                                    <div>
+                                      <div className="card-title">${t("universeMonitor")}</div>
+                                      <div className="universe-subtitle">
+                                        ${t("universeProgress")} ${activeHistoryUniverseDone}/${activeHistoryUniverseBranches.length}${activeHistoryUniverseErrored ? ` · ${activeHistoryUniverseErrored} ${t("error")}` : ""}
+                                      </div>
+                                    </div>
+                                    <div className="universe-head-right">
+                                      <div className="universe-percent">${activeHistoryUniverseProgress}%</div>
+                                      <span className=${`universe-chevron ${activeHistoryUniverseOpenState.monitorOpen ? "open" : ""}`} aria-hidden="true"></span>
+                                    </div>
+                                  </button>
+                                  <div className="universe-progress-track">
+                                    <div className="universe-progress-fill" style=${{ width: `${activeHistoryUniverseProgress}%` }}></div>
+                                  </div>
+                                  ${activeHistoryUniverseOpenState.monitorOpen
+                                    ? html`
+                                        <div className="universe-branches">
+                                          ${activeHistoryUniverseBranches.map((branch) => {
+                                            const preview = branch.error || branch.text.split("\n").filter(Boolean).slice(-3).join("\n") || universeStatusLabel(language, branch.status);
+                                            return html`
+                                              <button
+                                                key=${branch.id}
+                                                className=${`universe-branch ${branch.status}`}
+                                                onClick=${() => setHistoryUniverseDetail({ sessionId: activeHistoryUniverseId, branchId: branch.id, tab: "formatted" })}
+                                              >
+                                                <div className="universe-branch-top">
+                                                  <span className="universe-branch-id">#${branch.id}</span>
+                                                  <span className=${`universe-dot ${branch.status}`}></span>
+                                                </div>
+                                                <div className="universe-branch-preview">${preview}</div>
+                                                <div className="universe-branch-foot">${universeStatusLabel(language, branch.status)}${branch.wordCount ? ` · ${branch.wordCount} 字` : ""}</div>
+                                              </button>
+                                            `;
+                                          })}
+                                        </div>
+                                      `
+                                    : null}
+                                </article>
+                                <article className="settings-card universe-result-card universe-collapsible">
+                                  <button
+                                    className="universe-collapse-head"
+                                    onClick=${() =>
+                                      setHistoryUniverseOpenBySession((prev) => ({
+                                        ...prev,
+                                        [activeHistoryUniverseId]: {
+                                          ...activeHistoryUniverseOpenState,
+                                          resultOpen: !activeHistoryUniverseOpenState.resultOpen,
+                                        },
+                                      }))}
+                                  >
+                                    <div>
+                                      <div className="card-title">${t("universeResult")}</div>
+                                      <div className="universe-subtitle">${universePhaseLabel(language, activeHistoryUniverseSnapshot.status)}</div>
+                                    </div>
+                                    <span className=${`universe-chevron ${activeHistoryUniverseOpenState.resultOpen ? "open" : ""}`} aria-hidden="true"></span>
+                                  </button>
+                                  ${activeHistoryUniverseOpenState.resultOpen
+                                    ? html`
+                                        <${MarkdownContent}
+                                          text=${activeHistoryUniverseSnapshot.resultMarkdown || activeHistoryUniverseSnapshot.compileBuffer || t("universeNoResult")}
+                                          className="markdown-body universe-markdown"
+                                        />
+                                      `
+                                    : null}
+                                </article>
+                              </section>
+                            `
+                          : html`
+                              <section className="section-head section-head-large">
+                                <div className="section-title">${t("historyTitle")}</div>
+                              </section>
+                              <section className="stack">
+                                ${historyItems.length
+                                  ? historyItems.map(
+                                      (item) =>
+                                        item.kind === "argument-universe" && item.universeSnapshot
+                                          ? html`
+                                              <${HistoryUniverseCard}
+                                                key=${item.id}
+                                                item=${item}
+                                                preview=${sessionPreview(language, item)}
+                                                isOpen=${openHistorySwipeId === item.id}
+                                                setOpenId=${setOpenHistorySwipeId}
+                                                deleteLabel=${t("delete")}
+                                                t=${t}
+                                                onOpen=${() => {
+                                                  setOpenHistorySwipeId("");
+                                                  setActiveHistoryUniverseId(item.id);
+                                                }}
+                                                onDelete=${() => {
+                                                  setOpenHistorySwipeId("");
+                                                  if (activeHistoryUniverseId === item.id) {
+                                                    setActiveHistoryUniverseId("");
+                                                  }
+                                                  moveToRecycleBin(item.id);
+                                                }}
+                                              />
+                                            `
+                                          : html`
+                                              <${HistorySessionCard}
+                                                key=${item.id}
+                                                item=${item}
+                                                preview=${sessionPreview(language, item)}
+                                                isOpen=${openHistorySwipeId === item.id}
+                                                setOpenId=${setOpenHistorySwipeId}
+                                                deleteLabel=${t("delete")}
+                                                typeLabel=${t("chat")}
+                                                onOpen=${() => openSessionInChat(item.id)}
+                                                onDelete=${() => {
+                                                  setOpenHistorySwipeId("");
+                                                  moveToRecycleBin(item.id);
+                                                }}
+                                              />
+                                            `
+                                    )
+                                  : html`<div className="empty-note empty-note-centered">${t("noHistory")}</div>`}
+                              </section>
+                            `}
+                      `
+                    : null}
+                  ${state.tab === "extensions"
+                    ? html`
+                        ${state.extensionView === "argument-universe"
+                          ? html`
+                              <div className="nav-blur">
+                                <div className="topbar">
+                                  <button
+                                    className="circle-btn"
+                                    aria-label="Back"
+                                    onClick=${() => setState((prev) => ({ ...prev, extensionView: "list" }))}
+                                  >
+                                    <span className="universe-back-icon">‹</span>
+                                  </button>
+                                  <div className="topbar-title">${t("argumentUniverse")}</div>
+                                  <div className="circle-btn ghost-spacer"></div>
+                                </div>
+                              </div>
+                              <section className="stack extension-stack">
+                                <article className="settings-card universe-config">
+                                  <div className="universe-status-row">
+                                    <div>
+                                      <div className="card-title">${t("argumentUniverse")}</div>
+                                      <div className="universe-subtitle">${t("argumentUniverseCopy")}</div>
+                                    </div>
+                                    <span className=${`universe-phase ${universe.status}`}>${universePhaseLabel(language, universe.status)}</span>
+                                  </div>
+                                  <div className="field">
+                                    <label>${t("motion")}</label>
+                                    <input
+                                      value=${universe.motion}
+                                      placeholder="例：人工智能的普及对人类创造力是促进大于阻碍"
+                                      onInput=${(event) => setUniverse((prev) => ({ ...prev, motion: event.target.value }))}
+                                    />
+                                  </div>
+                                  <div className="universe-form-grid">
+                                    <div className="field">
+                                      <label>${t("stance")}</label>
+                                      <select
+                                        value=${universe.stance}
+                                        onInput=${(event) => setUniverse((prev) => ({ ...prev, stance: event.target.value }))}
+                                      >
+                                        <option value="正方">正方</option>
+                                        <option value="反方">反方</option>
+                                      </select>
+                                    </div>
+                                    <div className="field">
+                                      <label>${t("format")}</label>
+                                      <select
+                                        value=${universe.format}
+                                        onInput=${(event) => setUniverse((prev) => ({ ...prev, format: event.target.value }))}
+                                      >
+                                        <option value="标准传辩">标准传辩</option>
+                                        <option value="BP英国议会制">BP英国议会制</option>
+                                        <option value="奥瑞冈式政策辩">奥瑞冈式政策辩</option>
+                                        <option value="自定义">自定义</option>
+                                      </select>
+                                    </div>
+                                  </div>
+                                  <div className="universe-form-grid">
+                                    <div className="field">
+                                      <label>${t("branches")}</label>
+                                      <input
+                                        type="number"
+                                        min="1"
+                                        max="50"
+                                        value=${universe.nBranches}
+                                        onInput=${(event) => {
+                                          const rawValue = event.target.value;
+                                          const value = rawValue === "" ? "" : Math.max(1, Math.min(50, Number(rawValue) || 1));
+                                          setUniverse((prev) => ({
+                                            ...prev,
+                                            nBranches: value,
+                                            branches: universeHasRun && value !== "" ? createUniverseBranches(value) : prev.branches,
+                                          }));
+                                        }}
+                                      />
+                                    </div>
+                                    <div className="field">
+                                      <label>${t("parallel")}</label>
+                                      <input
+                                        type="number"
+                                        min="1"
+                                        max="10"
+                                        value=${universe.parallel}
+                                        onInput=${(event) => {
+                                          const rawValue = event.target.value;
+                                          setUniverse((prev) => ({
+                                            ...prev,
+                                            parallel: rawValue === "" ? "" : Math.max(1, Math.min(10, Number(rawValue) || 1)),
+                                          }));
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="universe-actions">
+                                    <button className="primary-btn universe-start-btn" disabled=${universeIsBusy} onClick=${startUniverseJob}>
+                                      ${universeIsBusy ? t("universeRunning") : universe.resultMarkdown ? t("restartUniverse") : t("startUniverse")}
+                                    </button>
+                                    ${universeIsBusy
+                                      ? html`<button className="danger-btn universe-stop-btn" onClick=${stopUniverseJob}>${t("stopUniverse")}</button>`
+                                      : null}
+	                                  </div>
+	                                </article>
+
+                                ${universeHasRun
+                                  ? html`
+                                      <article className="settings-card universe-monitor universe-collapsible">
+                                        <button
+                                          className="universe-collapse-head"
+                                          onClick=${() => setUniverse((prev) => ({ ...prev, monitorOpen: !prev.monitorOpen }))}
+                                        >
+                                          <div>
+                                            <div className="card-title">${t("universeMonitor")}</div>
+                                            <div className="universe-subtitle">${t("universeProgress")} ${universeDone}/${universeBranches.length}${universeErrored ? ` · ${universeErrored} ${t("error")}` : ""}</div>
+                                          </div>
+                                          <div className="universe-head-right">
+                                            <div className="universe-percent">${universeProgress}%</div>
+                                            <span className=${`universe-chevron ${universe.monitorOpen ? "open" : ""}`} aria-hidden="true"></span>
+                                          </div>
+                                        </button>
+                                        <div className="universe-progress-track">
+                                          <div className="universe-progress-fill" style=${{ width: `${universeProgress}%` }}></div>
+                                        </div>
+                                        ${universe.monitorOpen
+                                          ? html`
+                                              <div className="universe-branches">
+                                                ${universeBranches.map((branch) => {
+                                                  const preview = branch.error || branch.text.split("\n").filter(Boolean).slice(-3).join("\n") || universeStatusLabel(language, branch.status);
+                                                  return html`
+                                                    <button
+                                                      key=${branch.id}
+                                                      className=${`universe-branch ${branch.status}`}
+                                                      onClick=${() => setUniverseDetail({ branchId: branch.id, tab: "formatted" })}
+                                                    >
+                                                      <div className="universe-branch-top">
+                                                        <span className="universe-branch-id">#${branch.id}</span>
+                                                        <span className=${`universe-dot ${branch.status}`}></span>
+                                                      </div>
+                                                      <div className="universe-branch-preview">${preview}</div>
+                                                      <div className="universe-branch-foot">${universeStatusLabel(language, branch.status)}${branch.wordCount ? ` · ${branch.wordCount} 字` : ""}</div>
+                                                    </button>
+                                                  `;
+                                                })}
+                                              </div>
+                                            `
+                                          : null}
+                                      </article>
+
+                                      <article className="settings-card universe-result-card universe-collapsible">
+                                        <button
+                                          className="universe-collapse-head"
+                                          onClick=${() => setUniverse((prev) => ({ ...prev, resultOpen: !prev.resultOpen }))}
+                                        >
+                                          <div>
+                                            <div className="card-title">${t("universeResult")}</div>
+                                            <div className="universe-subtitle">
+                                              ${universe.resultMarkdown || universe.compileBuffer ? universePhaseLabel(language, universe.status) : t("universeNoResult")}
+                                            </div>
+                                          </div>
+                                          <span className=${`universe-chevron ${universe.resultOpen ? "open" : ""}`} aria-hidden="true"></span>
+                                        </button>
+	                                        ${universe.resultOpen
+	                                          ? universe.resultMarkdown || universe.compileBuffer
+	                                            ? html`
+	                                                <${MarkdownContent} text=${universe.resultMarkdown || universe.compileBuffer} className="markdown-body universe-markdown" />
+	                                              `
+	                                            : html`<div className="empty-note">${t("universeNoResult")}</div>`
+	                                          : null}
+                                      </article>
+                                      ${universe.status === "complete" && universe.resultMarkdown
+                                        ? html`<button className="ghost-btn universe-save-btn universe-save-under-result" onClick=${saveUniverseToHistory}>${t("saveUniverseToHistory")}</button>`
+                                        : null}
+                                    `
+                                  : null}
+                              </section>
+                            `
+                          : html`
+                              <section className="section-head section-head-large">
+                                <div className="section-title">${t("extensionsTitle")}</div>
+                                <div className="section-copy">${t("extensionsCopy")}</div>
+                              </section>
+                              <section className="stack">
+                                <article className="extension-card">
+                                  <button
+                                    className="extension-card-button"
+                                    onClick=${() => setState((prev) => ({ ...prev, extensionView: "argument-universe" }))}
+                                  >
+                                    <div className="extension-glyph">AU</div>
+                                    <div className="extension-body">
+                                      <div className="extension-title">${t("argumentUniverse")}</div>
+                                      <div className="extension-copy">${t("argumentUniverseCopy")}</div>
+                                    </div>
+                                    <div className="extension-open">${t("open")}</div>
+                                  </button>
+                                </article>
+                              </section>
+                            `}
                       `
                     : null}
                   ${state.tab === "settings"
@@ -2424,7 +3382,7 @@ function App() {
                       `
                     : null}
                   <nav className="tabbar">
-                    ${["chat", "history", "settings"].map(
+                    ${["chat", "history", "extensions", "settings"].map(
                       (tab) => html`
                         <button
                           key=${tab}
@@ -2486,7 +3444,77 @@ function App() {
                     `
                   : null}
 
-                ${state.modal
+	                ${selectedUniverseBranch
+	                  ? html`
+	                      <div className="modal center universe-detail-overlay" onClick=${() => setUniverseDetail({ branchId: "", tab: "formatted" })}>
+                        <div className="modal-card universe-detail-card" onClick=${(event) => event.stopPropagation()}>
+                          <div className="universe-detail-head">
+                            <div>
+                              <div className="modal-title">${t("universeBranchDetail")} #${selectedUniverseBranch.id}</div>
+                              <div className="session-meta">
+                                ${universeStatusLabel(language, selectedUniverseBranch.status)}${selectedUniverseBranch.wordCount ? ` · ${selectedUniverseBranch.wordCount} 字` : ""}
+                              </div>
+                            </div>
+                            <button className="mini-btn" onClick=${() => setUniverseDetail({ branchId: "", tab: "formatted" })}>${t("close")}</button>
+                          </div>
+                          <div className="universe-detail-tabs">
+                            ${["formatted", "raw"].map(
+                              (detailTab) => html`
+                                <button
+                                  className=${`universe-detail-tab ${universeDetail.tab === detailTab ? "active" : ""}`}
+                                  onClick=${() => setUniverseDetail((prev) => ({ ...prev, tab: detailTab }))}
+                                >
+                                  ${t(detailTab)}
+                                </button>
+                              `
+                            )}
+                          </div>
+                          <div className="universe-detail-content">
+                            ${universeDetail.tab === "raw"
+                              ? html`<pre className="universe-raw">${selectedUniverseBranch.text || selectedUniverseBranch.error || t("noMessages")}</pre>`
+                              : html`<${MarkdownContent} text=${selectedUniverseBranch.text || selectedUniverseBranch.error || t("noMessages")} className="markdown-body universe-markdown" />`}
+                          </div>
+                        </div>
+                      </div>
+	                    `
+	                  : null}
+
+	                ${selectedHistoryUniverseBranch
+	                  ? html`
+	                      <div className="modal center universe-detail-overlay" onClick=${() => setHistoryUniverseDetail({ sessionId: "", branchId: "", tab: "formatted" })}>
+	                        <div className="modal-card universe-detail-card" onClick=${(event) => event.stopPropagation()}>
+	                          <div className="universe-detail-head">
+	                            <div>
+	                              <div className="modal-title">${t("universeBranchDetail")} #${selectedHistoryUniverseBranch.id}</div>
+	                              <div className="session-meta">
+	                                ${universeStatusLabel(language, selectedHistoryUniverseBranch.status)}${selectedHistoryUniverseBranch.wordCount ? ` · ${selectedHistoryUniverseBranch.wordCount} 字` : ""}
+	                              </div>
+	                            </div>
+	                            <button className="mini-btn" onClick=${() => setHistoryUniverseDetail({ sessionId: "", branchId: "", tab: "formatted" })}>${t("close")}</button>
+	                          </div>
+	                          <div className="universe-detail-tabs">
+	                            ${["formatted", "raw"].map(
+	                              (detailTab) => html`
+	                                <button
+	                                  className=${`universe-detail-tab ${historyUniverseDetail.tab === detailTab ? "active" : ""}`}
+	                                  onClick=${() => setHistoryUniverseDetail((prev) => ({ ...prev, tab: detailTab }))}
+	                                >
+	                                  ${t(detailTab)}
+	                                </button>
+	                              `
+	                            )}
+	                          </div>
+	                          <div className="universe-detail-content">
+	                            ${historyUniverseDetail.tab === "raw"
+	                              ? html`<pre className="universe-raw">${selectedHistoryUniverseBranch.text || selectedHistoryUniverseBranch.error || t("noMessages")}</pre>`
+	                              : html`<${MarkdownContent} text=${selectedHistoryUniverseBranch.text || selectedHistoryUniverseBranch.error || t("noMessages")} className="markdown-body universe-markdown" />`}
+	                          </div>
+	                        </div>
+	                      </div>
+	                    `
+	                  : null}
+
+	                ${state.modal
                   ? html`
                       <div className=${`modal center ${isClosingRecycleBin ? "modal-closing" : ""}`} onClick=${closeModal}>
                         <div className=${`modal-card ${state.modal.type === "recycle-bin" ? "modal-card-solid" : ""} ${isClosingRecycleBin ? "modal-card-closing" : ""}`} onClick=${(event) => event.stopPropagation()}>

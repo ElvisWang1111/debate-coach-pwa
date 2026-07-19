@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "debate-coach-pwa-";
-const CACHE_NAME = "debate-coach-pwa-v46";
+const CACHE_NAME = "debate-coach-pwa-v55";
 const ASSETS = [
   "./",
   "./index.html",
@@ -8,6 +8,7 @@ const ASSETS = [
   "./manifest.webmanifest",
   "./content/SKILL.md",
   "./content/PrivacyPolicy.md",
+  "./case-writing-skill/SKILL.md",
   "./assets/logo.png",
   "./assets/icons/icon-180.png",
   "./assets/icons/icon-192.png",
